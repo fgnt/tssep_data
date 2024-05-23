@@ -1,0 +1,15 @@
+channels:
+  - defaults
+dependencies:
+  - python==3.11
+  - Cython
+  - IPython
+  - numpy
+  - scipy
+  - pip  # "conda env update" complains when this is missing
+  - pip:
+    # ASR
+    - openai-whisper
+    # - espnet
+    # - espnet_model_zoo
+    # - nemo_toolkit
