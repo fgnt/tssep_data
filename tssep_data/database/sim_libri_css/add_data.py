@@ -1,3 +1,5 @@
+import re
+
 import lazy_dataset.database
 import paderbox as pb
 import numpy as np
@@ -66,6 +68,7 @@ def main(
         rir_start_sample = np.array([get_rir_start_sample(h_k) for h_k in ex['audio_data']['rir'][:, :, :]])
         rir_stop_sample = rir_start_sample + early_rir_samples
 
+        # use first channel only
         ex['audio_data']['rir'] = ex['audio_data']['rir'][..., :1, :]
 
         ex['audio_data']['rir_early'] = ex['audio_data']['rir'][..., :np.amax(rir_stop_sample)]
@@ -85,7 +88,15 @@ def main(
         ex['audio_data']['speaker_reverberation_early_ch0'] = np.squeeze(ex['audio_data']['speaker_reverberation_early_ch0'], axis=1)
 
         p = Path(ex['audio_path']['noise_image'])
-        p = p.with_name(p.name.replace('_noise', 'speaker_reverberation_early_ch0'))
+        if '::' in p.name:
+            slice_str = p.name.split('::')[-1]
+            ch = re.match(r'^\[:,(\d+):\d+\]$', slice_str)
+            assert ch, slice_str
+            ch = ch.group(1)
+            p = p.with_name(
+                p.name.split('::')[0].replace('_noise', f'speaker_reverberation_early_ch{ch}'))
+        else:
+            p = p.with_name(p.name.replace('_noise', 'speaker_reverberation_early_ch0'))
         # print(p)
 
         pb.io.dump_audio(ex['audio_data']['speaker_reverberation_early_ch0'], p, normalize=False, dtype=np.float32)

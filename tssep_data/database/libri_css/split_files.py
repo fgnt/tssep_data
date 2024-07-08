@@ -11,7 +11,7 @@ import dlp_mpi
 import paderbox as pb
 from paderbox.utils.mapping import Dispatcher
 from paderbox.utils.iterable import zip
-import tssep.util.bash
+import tssep_data.util.bash
 
 
 def zip_strict(*args):
@@ -58,7 +58,7 @@ def main(
         write=False,  # Weather to write the audio files or just the json.
         json='/mm1/boeddeker/libriCSS/libriCSS_raw.json'
 ):
-    print(tssep.util.bash.hostname())
+    print(tssep_data.util.bash.hostname())
 
     json = Path(json)
     data = pb.io.load(json)

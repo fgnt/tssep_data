@@ -10,8 +10,7 @@ import shlex
 import psutil
 
 
-from tssep.util.bash import location
-
+from tssep_data.util.bash import location
 
 
 @dataclasses.dataclass
@@ -212,6 +211,8 @@ class SlurmResources:
         -N 1 -n 1 -c 1 --time 48:0:0 -p cpu
         >>> print(SlurmResources(cpus=1, mpi=2, gpus=1).to_str())
         -N 1 -n 2 -c 1 -p gpu --gres=gpu:1
+        >>> print(SlurmResources(cpus=1, mpi=2, gpus=1, gpu_partition=None).to_str())
+        -N 1 -n 2 -c 1 --gres=gpu:1
 
         """
         s = []
@@ -247,12 +248,14 @@ class SlurmResources:
         #     s += ['--qos', f'{self.qos}']
         if self.gpus:
             assert isinstance(self.gpus, int), (type(self.gpus), self.gpus)
+
+            if self.gpu_partition is not None:
+                s += ['-p', f'{self.gpu_partition}']
+
             if self.gputype is None:
-                s += ['-p', f'{self.gpu_partition}',
-                      f'--gres=gpu:{self.gpus}']
+                s += [f'--gres=gpu:{self.gpus}']
             else:
-                s += ['-p', f'{self.gpu_partition}',
-                      f'--gres=gpu:{self.gputype}:{self.gpus}']
+                s += [f'--gres=gpu:{self.gputype}:{self.gpus}']
         else:
             if self.cpu_partition is not None:
                 s += ['-p', f'{self.cpu_partition}']
@@ -382,6 +385,265 @@ def set_memory_limit(mem_per_cpu_in_GB):
         print(
             f'$SLURM_CPUS_PER_TASK={os.environ.get("SLURM_CPUS_PER_TASK", 1)}')
     resource.setrlimit(resource.RLIMIT_AS, (soft, hard))
+
+
+@dataclasses.dataclass
+class CMD2HPC:
+    cpus: int  # cpus per task/MPI process
+    mem: 'str | None' = None  # e.g. '25GB'  # mem per task/MPI process
+    gpus: 'int' = 0  # gpus per job, --gpus-per-task is for gpus per task/MPI process
+    gputype: 'str | None' = None
+    mpi: 'int | str' = 1  # Number of tasks/MPI processes. Note: The total number of requested cpus is cpus times mpi.
+    cpu_partition: str = None
+    gpu_partition: str = None
+    time: 'str | int | None' = None
+    job_name: 'str | None' = None
+    mpi_cmd: 'callable' = SlurmResources.mpi_cmd
+    # force_local: 'bool' = False
+    pty: 'bool' = False
+    block: 'bool' = True
+    shell: 'bool' = False
+    shell_wrap: 'bool' = False
+    backend: 'str' = None  # slurm, mpirun
+
+    def __post_init__(self):
+        self.mpi = int(self.mpi)
+        self.sr = SlurmResources(
+            cpus=self.cpus, mem=self.mem, gpus=self.gpus, mpi=self.mpi,
+            gputype=self.gputype,
+            cpu_partition=self.cpu_partition,
+            gpu_partition=self.gpu_partition,
+            time=self.time, job_name=self.job_name,
+            mpi_cmd=self.mpi_cmd,
+        )
+
+        if self.backend is None:
+            try:
+                _ = self.sr.salloc_executable
+                self.backend = 'slurm'
+            except RuntimeError:
+                self.backend = 'mpirun'
+
+        if self.backend == 'mpirun' and self.sr.mpi > 1:
+            self._apply_local_limits()
+
+    def replace(self, **kwargs):
+        return dataclasses.replace(self, **kwargs)
+
+    def _apply_local_limits(self):
+        import psutil
+        import humanfriendly  # ESPnet dependency, hence anyway installed
+        total_mem = psutil.virtual_memory().available
+        if self.sr.mem is not None:
+            max_mem_limit_jobs = total_mem // humanfriendly.parse_size(self.sr.mem)
+            if max_mem_limit_jobs < self.sr.mpi:
+                if max_mem_limit_jobs == 0:
+                    print(f'ERROR: Not enough memory for a single job (requested {self.sr.mpi}): {self.sr.mem}*{self.sr.mpi}>{humanfriendly.format_size(total_mem)}.\n'
+                          f'WARNING: Ignoring above error and set the number of jobs to one.')
+                    max_mem_limit_jobs = 1
+                else:
+                    print(f'WARNING: Not enough memory for {self.sr.mpi} jobs: {self.sr.mem}*{self.sr.mpi}>{humanfriendly.format_size(total_mem)}. '
+                          f'Limiting to {max_mem_limit_jobs} jobs.')
+                self.sr.mpi = max_mem_limit_jobs
+        max_cpu_limit_jobs = max([
+            1,
+            len(os.sched_getaffinity(0)) // self.cpus,
+            # psutil.cpu_count(logical=False),  # some mpi implementations allow only number physical cores
+        ])
+        if max_cpu_limit_jobs < self.sr.mpi:
+            print(f'WARNING: Not enough cpus (#cpus={len(os.sched_getaffinity(0))}) '
+                  f'for {self.sr.mpi} jobs. '
+                  f'Limiting to {max_cpu_limit_jobs} jobs.')
+            self.sr.mpi = max_cpu_limit_jobs
+        self.mpi = self.sr.mpi
+
+    def __call__(self, cmd):
+        if self.backend == 'slurm':
+            return self._slurm(cmd)
+        elif self.backend == 'mpirun':
+            return self._mpirun(cmd)
+        else:
+            raise ValueError(self.backend)
+
+    class _CMD:
+        def __init__(self, cmd, shell_wrap):
+            if shell_wrap:
+                self.str = bash_wrap(cmd, shell=True)
+                self.lst = bash_wrap(cmd, shell=False)
+            else:
+                self.str = cmd if isinstance(cmd, str) else shlex.join(cmd)
+                self.lst = shlex.split(cmd) if isinstance(cmd, str) else cmd
+
+    def _slurm(self, cmd):
+        slurm_cmd = self.sr.salloc_executable if self.block else self.sr.sbatch_executable
+        if location not in ['Noctua2', 'Noctua1', 'unknown', 'MERL']:
+            raise NotImplementedError(location)
+
+        cmd = self._CMD(cmd, shell_wrap=self.shell_wrap)
+
+        mpi_cmd = self.sr.mpi_cmd
+        if self.sr.mpi == 1 and self.sr.mpi_cmd in ['mpirun', 'mpiexec']:
+            mpi_cmd = ''
+
+        if self.block:
+            mpi_cmd = [mpi_cmd] if mpi_cmd else []
+            if self.shell:
+                return f'{shlex.join([slurm_cmd] + self.sr.to_list() + mpi_cmd)} {cmd.str}'
+            else:
+                return [slurm_cmd] + self.sr.to_list() + mpi_cmd + cmd.lst
+        else:
+            if self.shell:
+                wrap = f'{mpi_cmd} {cmd.str}'
+            else:
+                if mpi_cmd:
+                    wrap = f'{mpi_cmd} {cmd.str}'
+                else:
+                    wrap = cmd.str
+            cmd = [slurm_cmd] + self.sr.to_list() + ['--wrap', wrap]
+            return shlex.join(cmd) if self.shell else cmd
+
+    def _mpirun(self, cmd):
+        cmd = self._CMD(cmd, shell_wrap=self.shell_wrap)
+        if self.sr.mpi == 1:
+            return cmd.str if self.shell else cmd.lst
+
+        # From OpenMPI help text, when request to many mpi processes:
+        #     In all the above cases, if you want Open MPI to default to the number
+        #     of hardware threads instead of the number of processor cores, use the
+        #     --use-hwthread-cpus option.
+        # MPICH has also this option. Hence, activate it by default.
+
+        if self.shell:
+            return f'mpirun --use-hwthread-cpus -np {self.sr.mpi} {cmd.str}'
+        else:
+            return ['mpirun', '--use-hwthread-cpus', '-np', f'{self.sr.mpi}'] + cmd.lst
+
+
+def cmd_to_hpc_v2(
+        cmd,
+        cpus: int = 1,  # cpus per task/MPI process
+        mem: 'str | None' = None,  # e.g. '25GB'  # mem per task/MPI process
+        gpus: 'int' = 0,  # gpus per job, --gpus-per-task is for gpus per task/MPI process
+        gputype: 'str | None' = None,
+        mpi: 'int | str' = 1,  # Number of tasks/MPI processes. Note: The total number of requested cpus is cpus times mpi.
+        cpu_partition: str = None,
+        gpu_partition: str = None,
+        time: 'str | int | None' = None,
+        job_name = None,
+        mpi_cmd = SlurmResources.mpi_cmd,
+        force_local=False,
+        pty=False,
+        block=True,
+        shell=False,
+        shell_wrap=False,
+):
+    """
+    Convert the command to a command that can be run on a HPC cluster,
+    if slurm is installed. Otherwise, the command is modified to run locally,
+    i.e.:
+     - Single process (i.e. mpi==1): Return the command unchanged
+     - Multi process (i.e. mpi>1): Return command prefixed by mpirun.
+       Note: The requested resources will be adjusted to the available
+             resources. e.g.
+              - requesting 10 process with each 10GB memory, but only 32 GB
+                are free, it will be reduced to 3 processes.
+              - requesting 10 process but the machine has only 8 cores, it will
+                be reduced to 8 processes.
+
+    Args:
+        cmd:
+        cpus:
+        mem:
+        gpus:
+        gputype:
+        mpi:
+        cpu_partition:
+        gpu_partition:
+        time:
+        job_name:
+        mpi_cmd:
+        force_local:
+        pty:
+        block:
+        shell:
+        shell_wrap:
+
+    Returns:
+
+
+    >>> import mock, contextlib, psutil, humanfriendly
+
+
+    # For doctest reproducibility, we mock the available memory and cpus
+    >>> @contextlib.contextmanager
+    ... def mock_local():
+    ...     t = type(psutil.virtual_memory())
+    ...     with mock.patch(f'{t.__module__}.{t.__qualname__}.available', new=humanfriendly.parse_size('11.88GB')):
+    ...         with mock.patch('os.sched_getaffinity', new=lambda x: [0, 1, 2, 3]):
+    ...             with mock.patch('shutil.which', new=lambda x: None):
+    ...                 yield
+    >>> mock_slurm = mock.patch('shutil.which', new=lambda x: x)
+
+    # Normal command, that gets executed on the local machine
+    >>> with mock_local():
+    ...     shlex.join(cmd_to_hpc_v2('echo hello', 1, '4GB', 0, None, 1, 'cpu', 'gpu', '1:0:0'))
+    'echo hello'
+
+    # Request parallel execution will add mpirun
+    >>> with mock_local():
+    ...     cmd_to_hpc_v2('echo hello', 1, '0.1GB', 0, None, 4, 'cpu', 'gpu', '1:0:0', shell=True)
+    'mpirun --use-hwthread-cpus -np 4 echo hello'
+
+    # Request too much cpus for the local machine will reduce the number of processes.
+    >>> with mock_local():
+    ...      shlex.join(cmd_to_hpc_v2('echo hello', 2, '0.1GB', 0, None, 10, 'cpu', 'gpu', '1:0:0'))
+    WARNING: Not enough cpus (#cpus=4) for 10 jobs. Limiting to 2 jobs.
+    'mpirun --use-hwthread-cpus -np 2 echo hello'
+
+    # Request too much memory for the local machine will reduce the number of processes.
+    >>> with mock_local():
+    ...      shlex.join(cmd_to_hpc_v2('echo hello', 1, '10GB', 0, None, 2, 'cpu', 'gpu', '1:0:0'))
+    WARNING: Not enough memory for 2 jobs: 10GB*2>11.88 GB. Limiting to 1 jobs.
+    'echo hello'
+
+    # Request too much memory for the local machine for a single job: Print a warning.
+    >>> with mock_local():
+    ...     shlex.join(cmd_to_hpc_v2('echo hello', 1, '100GB', 0, None, 2, 'cpu', 'gpu', '1:0:0'))
+    ERROR: Not enough memory for a single job (requested 2): 100GB*2>11.88 GB.
+    WARNING: Ignoring above error and set the number of jobs to one.
+    'echo hello'
+
+    # Shell && is preserved, whell shell is True or (block is False and slurm is used)
+    >>> with mock_local():
+    ...     cmd_to_hpc_v2('echo hello && echo world', shell=True)
+    'echo hello && echo world'
+    >>> with mock_local():
+    ...     cmd_to_hpc_v2('echo hello && echo world', shell=True, mpi=2)
+    'mpirun --use-hwthread-cpus -np 2 echo hello && echo world'
+    >>> with mock_slurm:
+    ...     print(cmd_to_hpc_v2('echo hello && echo world', shell=True))
+    salloc.py -N 1 -n 1 -c 1 srun echo hello && echo world
+    >>> with mock_slurm:
+    ...     print(cmd_to_hpc_v2('echo hello && echo world', shell=True, block=False))
+    sbatch.py -N 1 -n 1 -c 1 --wrap 'srun echo hello && echo world'
+    >>> with mock_slurm:
+    ...     print(cmd_to_hpc_v2('echo hello && echo world', shell=False, block=False))
+    ['sbatch.py', '-N', '1', '-n', '1', '-c', '1', '--wrap', 'srun echo hello && echo world']
+    >>> with mock_slurm:
+    ...     print(cmd_to_hpc_v2('echo hello && echo world', shell=True, block=False, gpus=1))
+    sbatch.py -N 1 -n 1 -c 1 -p None --gres=gpu:1 --wrap 'srun echo hello && echo world'
+
+
+    """
+    return CMD2HPC(
+        cpus=cpus, mem=mem, gpus=gpus, gputype=gputype, mpi=mpi,
+        cpu_partition=cpu_partition, gpu_partition=gpu_partition, time=time,
+        job_name=job_name, mpi_cmd=mpi_cmd, pty=pty, block=block, shell=shell,
+        shell_wrap=shell_wrap,
+    )(cmd)
+
+
+
 
 
 def cmd_to_hpc(
@@ -572,7 +834,6 @@ def cmd_to_hpc(
                 len(os.sched_getaffinity(0)) // cpus,
                 # psutil.cpu_count(logical=False),  # some mpi implementations allow only number physical cores
             ])
-            print('max_cpu_limit_jobs', max_cpu_limit_jobs)
             if max_cpu_limit_jobs < sr.mpi:
                 print(f'WARNING: Not enough cpus (#cpus={len(os.sched_getaffinity(0))}) '
                       f'for {sr.mpi} jobs. '

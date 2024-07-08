@@ -38,12 +38,13 @@ import padertorch as pt
 # from cbj.lib.access import ItemAccessor
 # from css.egs.extract.data_ivector import _IvectorLoader
 from paderbox.utils.iterable import zip
-from tssep.data.kaldi import Loader as KaldiLoader
+from tssep_data.data.kaldi import Loader as KaldiLoader
 
 if typing.TYPE_CHECKING:
     # Cyclic import
-    from tssep.data.reader_v2 import Reader
+    from tssep_data.data.reader_v2 import Reader
 
+from tssep_data.data.reader_v2 import egs_dir
 
 @dataclasses.dataclass
 class ABC:
@@ -125,7 +126,7 @@ class FramewiseEmbeddings(_Template):
     def __call__(self, ex, reader: 'Reader', load=True):
         """
         >>> np.random.seed(0)
-        >>> from tssep.data.reader_v2 import Reader
+        >>> from tssep_data.data.reader_v2 import Reader
         >>> reader = Reader.new()
         >>> reader.datasets['SimLibriCSS-train-960_000_ch']
         SegmentPBJsonDSMeta(json_path='/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css_ch.json', dataset_name='SimLibriCSS-train', num_speakers=8, sample_rate=16000, observation="['observation'][:1]", segment_num_samples=960000, minimum_segment_num_samples=None, mixup=None)
@@ -266,7 +267,7 @@ class FramewiseEmbeddings(_Template):
         """
 
         >>> np.random.seed(0)
-        >>> from tssep.data.reader_v2 import Reader
+        >>> from tssep_data.data.reader_v2 import Reader
         >>> from pprint import pprint
 
         >>> cfg = pb.io.load('/scratch/hpc-prf-nt2/cbj/deploy/css/egs/extract/150/eval/21000/1/config.yaml')
@@ -355,7 +356,7 @@ class FramewiseEmbeddings(_Template):
     def pre_net(self, ex):
         """
 
-        >>> from tssep.data.reader_v2 import Reader
+        >>> from tssep_data.data.reader_v2 import Reader
         >>> reader = Reader.new()
         >>> ds = reader.__call__(dataset_name='SimLibriCSS-train-960_000_ch', load_keys=['observation'], load_audio=True)
         >>> ex = ds[0]
@@ -440,7 +441,7 @@ class FramewiseEmbeddings(_Template):
             Mean and variance normalization for domain adaptation.
 
         >>> from paderbox.utils.pretty import pprint
-        >>> from tssep.data.reader_v2 import Reader
+        >>> from tssep_data.data.reader_v2 import Reader
         >>> # ex = JsonDatabase('/mm1/boeddeker/libriCSS/libriCSS_raw_compressed.json').get_dataset('0L')[0]
         >>> reader = Reader.new()
         >>> ex = reader('libri_css_ch')[0]
@@ -502,7 +503,7 @@ class SpeakerEmbeddings(_Template):
 
     def __call__(self, ex, reader: 'Reader', load=True):
         """
-        >>> from tssep.data.reader_v2 import Reader
+        >>> from tssep_data.data.reader_v2 import Reader
         >>> reader = Reader.new()
         >>> # ds = reader.__call__(dataset_name='SimLibriCSS-train-960_000_ch', load_keys=['observation'], load_audio=True)
         >>> ds = reader.__call__(dataset_name='SimLibriCSS-train-960_000_ch', load_keys=['observation'], load_audio=True)
@@ -579,7 +580,7 @@ class SpeakerEmbeddings(_Template):
     def mean_std(self, datasets: 'list[str]', reader: 'Reader'):
         """
         >>> import paderbox as pb
-        >>> from tssep.data.reader_v2 import Reader
+        >>> from tssep_data.data.reader_v2 import Reader
         >>> reader = Reader.new()
         >>> # ds = reader.__call__(dataset_name='SimLibriCSS-train-960_000_ch', load_keys=['observation'], load_audio=True)
         >>> auxInput = reader.data_hooks.tasks['auxInput']
@@ -675,7 +676,7 @@ class SpeakerEmbeddings(_Template):
             Mean and variance normalization for domain adaptation.
 
         >>> from paderbox.utils.pretty import pprint
-        >>> from tssep.data.reader_v2 import Reader
+        >>> from tssep_data.data.reader_v2 import Reader
         >>> # ex = JsonDatabase('/mm1/boeddeker/libriCSS/libriCSS_raw_compressed.json').get_dataset('0L')[0]
         >>> reader = Reader.new()
         >>> ex = reader('libri_css_ch')[0]
@@ -770,13 +771,14 @@ class Sequential(ABC):
         default_factory=functools.partial(
             dict,
             auxInput={
-                'factory': 'tssep.data.data_hooks.SpeakerEmbeddings',
+                'factory': SpeakerEmbeddings,
                 'json': [
+                    egs_dir / '',
                     # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/simLibriCSS_oracle_ivectors.json',
                     # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/libriCSS_espnet_ivectors.json',
-                    '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/3/sim_libri_css_ch_8spk_oracle_dvectors.json',
+                    # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/3/sim_libri_css_ch_8spk_oracle_dvectors.json',
                     # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/4/libri_css_ch_8spk_ch0_oracle_dvectors.json',
-                    '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/5/libri_css_ch_8spk_ch_oracle_dvectors.json',
+                    # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/5/libri_css_ch_8spk_ch_oracle_dvectors.json',
                 ]
             },
             # auxInput2={

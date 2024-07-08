@@ -12,7 +12,7 @@ import dlp_mpi
 from paderbox.utils.mapping import Dispatcher
 import paderbox as pb
 
-import tssep.util.bash
+import tssep_data.util.bash
 
 
 class Foo:
@@ -50,7 +50,7 @@ class Foo:
 
 def main(*folders, check=False):
     for folder in folders:
-        print(f'Compress files in: {folder}, {tssep.util.bash.hostname()}')
+        print(f'Compress files in: {folder}, {tssep_data.util.bash.hostname()}')
 
         p = Path(folder)
 
@@ -93,7 +93,7 @@ def main(*folders, check=False):
                 pass
             else:
                 raise ValueError(f.name)
-        from tssep.util.bash import hostname
+        from tssep_data.util.bash import hostname
         print(f'Finished compress files in: {folder}, {hostname()}')
 
 

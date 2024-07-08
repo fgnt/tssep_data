@@ -37,7 +37,7 @@ from pathlib import Path
 import paderbox as pb
 
 import lazy_dataset.database
-import tssep.io.kaldi
+import tssep_data.io.kaldi
 # import tssep_data.io.kaldi
 
 sacred.SETTINGS.CONFIG.READ_ONLY_CONFIG = False  # READ_ONLY causes some strange errors. Disable it.
@@ -273,7 +273,7 @@ def _combine_segment_wav_scp(
      ...}
 
     """
-    from tssep.io.kaldi import to_wav_scp_value, load_utt2spk, load_segments, load_wav_scp
+    from tssep_data.io.kaldi import to_wav_scp_value, load_utt2spk, load_segments, load_wav_scp
 
     utt2spk = load_utt2spk(utt2spk_file)
     segments = load_segments(segments_file)
@@ -398,8 +398,8 @@ class NNet3MeetingIVectorCalculator(pt.Configurable):
                 if segments:
                     wav_scp, utt2spk = _combine_segment_wav_scp(segments, wav_scp, utt2spk)
                 else:
-                    wav_scp = tssep.io.kaldi.load_wav_scp(wav_scp)
-                    utt2spk = tssep.io.kaldi.load_utt2spk(utt2spk)
+                    wav_scp = tssep_data.io.kaldi.load_wav_scp(wav_scp)
+                    utt2spk = tssep_data.io.kaldi.load_utt2spk(utt2spk)
 
                 wav_scps[dataset_name] = wav_scp
                 utt2spks[dataset_name] = utt2spk
@@ -466,7 +466,7 @@ def load_ivectors(folder, glob):
       55.61412]}
 
     """
-    from tssep.io.kaldi import load_wav_scp, load_utt2spk, load_utt2dur
+    from tssep_data.io.kaldi import load_wav_scp, load_utt2spk, load_utt2dur
     import numpy as np
     import kaldi_io
 

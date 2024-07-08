@@ -36,10 +36,10 @@ from lazy_dataset.database import JsonDatabase
 
 import paderbox as pb
 from paderbox.utils.mapping import Dispatcher
-from tssep.util.utils import zip_strict
+from paderbox.utils.iterable import zip as zip_strict
 import operator
 
-from tssep.io.kaldi import KaldiDataDumper, to_wav_scp_value
+from tssep_data.io.kaldi import KaldiDataDumper, to_wav_scp_value
 
 
 def load_rttm(file, example_id_mapper: callable = None):
@@ -320,7 +320,7 @@ steps/online/nnet2/extract_ivectors.sh --cmd "$train_cmd" --nj $nj \
             for ex in ds.sort(lambda ex: ex['example_id']):
                 data = collections.defaultdict(lambda: pb.array.interval.zeros())
                 for speaker_id, offset, num_samples in zip_strict(ex['speaker_id'], ex['offset'],
-                                                                  ex['num_samples']['original_source']):
+                                                                  ex['num_samples']['original_source'], strict=True):
                     offset = offset + ex['start']
                     data[speaker_id][offset:offset + num_samples] = 1
 
@@ -372,7 +372,7 @@ steps/online/nnet2/extract_ivectors.sh --cmd "$train_cmd" --nj $nj \
             for ex in ds.sort(lambda ex: ex['example_id']):
                 data = collections.defaultdict(lambda: pb.array.interval.zeros())
                 for speaker_id, offset, num_samples in zip_strict(ex['speaker_id'], ex['offset'],
-                                                                  ex['num_samples']['original_source']):
+                                                                  ex['num_samples']['original_source'], strict=True):
                     offset = offset + ex['start']
                     data[speaker_id][offset:offset + num_samples] = 1
 
@@ -471,13 +471,13 @@ steps/online/nnet2/extract_ivectors.sh --cmd "$train_cmd" --nj $nj \
                 if rttm is None:
                     data = collections.defaultdict(lambda: pb.array.interval.zeros())
                     for speaker_id, offset, num_samples in zip_strict(ex['speaker_id'], ex['offset'],
-                                                                      ex['num_samples']['original_source']):
+                                                                      ex['num_samples']['original_source'], strict=True):
                         if isinstance(offset, int):
                             assert isinstance(num_samples, int), (type(num_samples), num_samples)
                             offset = [offset]
                             num_samples = [num_samples]
 
-                        for o, n in zip_strict(offset, num_samples):
+                        for o, n in zip_strict(offset, num_samples, strict=True):
                             if absolut_offset:
                                 pass
                             else:
@@ -662,13 +662,13 @@ steps/online/nnet2/extract_ivectors.sh --cmd "$train_cmd" --nj $nj \
             for ex in ds.sort(lambda ex: ex['example_id']):
                 data = collections.defaultdict(lambda: pb.array.interval.zeros())
                 for speaker_id, offset, num_samples in zip_strict(ex['speaker_id'], ex['offset'],
-                                                                  ex['num_samples']['original_source']):
+                                                                  ex['num_samples']['original_source'], strict=True):
                     assert isinstance(speaker_id, str), speaker_id
                     if isinstance(ex['offset'], int):
                         offset = offset + ex.get('start', 0)
                         data[speaker_id][offset:offset + num_samples] = 1
                     else:
-                        for o, n in zip_strict(offset, num_samples):
+                        for o, n in zip_strict(offset, num_samples, strict=True):
                             o = ex.get('start', 0) + o
                             data[speaker_id][o:o + n] = 1
 

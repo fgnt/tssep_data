@@ -22,9 +22,13 @@ import numpy as np
 import paderbox as pb
 import padertorch as pt
 
-from tssep.util.access import ItemAccessor
-from tssep.data import data_hooks
+from tssep_data.util.access import ItemAccessor
+from tssep_data.data import data_hooks
 import tssep
+import tssep_data
+
+
+egs_dir = tssep.git_root / 'egs'
 
 
 def _get_segment(num_samples, segment_num_samples,
@@ -288,7 +292,7 @@ class DatasetCfgs:
         kwargs = {
             # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css.json',
             # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css_fix8spk.json',
-            'json_path': tssep.git_root / 'egs/libri_css/data/jsons/sim_libri_css_early.json',
+            'json_path': egs_dir / 'libri_css/data/jsons/sim_libri_css_early.json',
             'observation': "['observation'][:1]",
             'num_speakers': 8,
         }
@@ -315,7 +319,8 @@ class DatasetCfgs:
         for k in list(datasets.keys()):
             datasets[f'{k}_ch'] = {
                 **datasets[k],
-                'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css_ch_speaker_reverberation_early_fix8spk.json',
+                'json_path': egs_dir / 'libri_css/data/jsons/sim_libri_css_ch_speaker_reverberation_early_fix8spk.json',
+                # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css_ch_speaker_reverberation_early_fix8spk.json',
                 # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css_ch.json',
             }
         return datasets
@@ -367,7 +372,7 @@ class DatasetCfgs:
         datasets = {}
         kwargs = {
             # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/libriCSS_raw_compressed.json',
-            'json_path': tssep.git_root / 'egs/libri_css/data/jsons/libriCSS_raw_chfiles.json',
+            'json_path': egs_dir / 'libri_css/data/jsons/libriCSS_raw_chfiles.json',
             'observation': '["observation"][:1]',
             'num_speakers': 8,
         }
@@ -380,7 +385,8 @@ class DatasetCfgs:
             'factory': PBJsonDSMeta,
             'dataset_name': ['0S', '0L', 'OV10', 'OV20', 'OV30', 'OV40'],
             **kwargs,
-            'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/libriCSS_raw_compressed_ch.json',
+            'json_path': egs_dir / 'libri_css/data/jsons/libriCSS_raw_compressed_ch.json',
+            # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/libriCSS_raw_compressed_ch.json',
         }
 
         return datasets
