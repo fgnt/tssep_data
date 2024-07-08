@@ -1,0 +1,25 @@
+
+
+eg:
+#  factory: css.egs.extract.experiment.Experiment
+  trainer:
+#    factory: padertorch.train.trainer.Trainer
+    model:
+#      factory: tssep.train.model.Model
+      reader:
+        factory: tssep_data.data.reader_v2.Reader
+#        datasets:  #
+      fe:
+        size: 512
+        shift: 128
+        factory: tssep.train.feature_extractor.ConcaternatedSTFTFeatures
+        fe1:
+          factory: tssep.train.feature_extractor.TorchMFCC
+        fe2:
+          factory: tssep.train.feature_extractor.Log1pMaxNormAbsSTFT
+      mask_estimator:
+#        factory: css.egs.extract.net.MaskEstimator_v2
+        output_resolution: 't'   # TS-VAD output, i.e. only time resolution
+#        output_resolution = 'tf'  # TS-SEP output, i.e. time and frequency resolution
+        num_averaged_permutations: 2
+        ts_vad: 8  # False of num_speakers, enable the special TS-VAD layer at the end, that sees all speakers
