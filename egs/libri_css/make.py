@@ -1,405 +1,177 @@
 #!/usr/bin/env python
+import inspect
 import os
+import re
 import shlex
-import shutil
+import subprocess
 import sys
+import signal
+import logging
+import shutil
 from pathlib import Path
 
+import paderbox as pb
+
 from tssep_data.util.slurm import cmd_to_hpc
-from tssep_data.util.cmd_runner import touch, CLICommands, confirm, run, Green, Color_Off, Red, env_check, maybe_execute, user_select, add_stage_cmd
+from tssep_data.util.cmd_runner import touch, CLICommands, confirm, run, Green, Color_Off, Red, maybe_execute, env_check, user_select, add_stage_cmd
 
 
 clicommands = CLICommands()
 
 
-@clicommands
-def libri_css():
-    # Here, only the for_release folder is used.
-    # Hence, it is not necessary to execute the baseline code.
-    for_release_zip = Path('for_release.zip')
-    @maybe_execute(target=for_release_zip)
-    def _():
-        link = 'https://docs.google.com/uc?export=download&id=1Piioxd5G_85K9Bhcr8ebdhXx0CnaHy7l'
-        if shutil.which('gdown'):
-            run(['gdown', link])
-        else:
-            print(f'{Red}Download the `for_release.zip` file manually '
-                  f'(open {link!r} and click download) or '
-                  f'install gdown (pip install gdown) to automatically '
-                  f'download the libri_css data.{Color_Off}')
-            sys.exit(1)
-
-    for_release = Path('for_release')
-    @maybe_execute(target=for_release)
-    def _():
-        run(['unzip', os.fspath(for_release_zip)])
-
-
-@clicommands
-def sim_libri_css():
-    jsalt2020 = Path('jsalt2020_simulate')
-    @maybe_execute(
-        target=jsalt2020,
-    )
-    def _():
-        run(['git', 'clone', 'https://github.com/boeddeker/jsalt2020_simulate'])
-
-    exproot = jsalt2020 / 'simdata'
-    librispeech = exproot / 'data-orig/LibriSpeech'
-    if librispeech.exists():
-        print(f'{librispeech} already exists, skipping librispeech download')
-    else:
-        for k, v in os.environ.items():
-            if k.lower() == 'librispeech':
-                print(f'Found librispeech path in environment (key: {k}) at', v)
-                run(['ln', '-s', v, str(librispeech)])
-                break
-        else:
-            env = {'EXPROOT': exproot.relative_to(jsalt2020)}
-            if confirm(f"{librispeech} doesn't exist.\nDownload librispeech? (Answer no (or Ctrl-C) to get the command to create a symlink to an existing librispeech folder)"):
-                run(['./download.sh'], env=env, cwd=jsalt2020)
-            else:
-                librispeech.parent.mkdir(exist_ok=True, parents=True)
-                print('Create here a symlink to librispeech:')
-                print(f'ln -s /path/to/librispeech {shlex.quote(str(librispeech))}')
-                sys.exit(1)
-
-    # First process dev, since it fails faster, when something doesn't work
-    datasets = ['dev', 'train', 'test']
-
-    data = exproot / 'data'
-
-    @maybe_execute(
-        target=data,
-        target_samples=[
-            data / dataset
-            for dataset in datasets
-        ]
-    )
-    def _():
-        # if confirm("Preprocess librispeech? (i.e. convert flac to wav)"):
-        # The user has no choise. preprocess.sh converts flac to wav,
-        # changes folder structure and creates some auxillary files.
-        env = {'EXPROOT': exproot.relative_to(jsalt2020)}
-        (jsalt2020 / 'path.sh').touch()
-        run(['./scripts/preprocess.sh'], env=env, cwd=jsalt2020)
-
-    for dataset in datasets:
-        # Note: Peak memory is below 10 GB for the last KALDI job
-        # train dataset jobs need between 3 and 6 hours on our (Paderborn) cluster.
-        dataset_dir = data / f'SimLibriCSS-{dataset}'
-        @maybe_execute(
-            done_file=True,
-            overwrite_works=True,
-            target=dataset_dir,
-            target_samples=[
-                dataset_dir / 'wav',
-                dataset_dir / 'mixspec.json',
-                dataset_dir / 'mixlog.json',
-            ]
-        )
-        def _():
-            env = {'EXPROOT': exproot.relative_to(jsalt2020)}
-            (jsalt2020 / 'path.sh').touch()
-            run(
-                cmd_to_hpc(
-                    [
-                        './scripts/run_meetings.sh',
-                        # '--split', '40',
-                        '--dyncfg', os.path.relpath('simlibricss_meeting_dynamics.json', jsalt2020),
-                        f'{dataset_dir.name}', f'{dataset}'
-                    ],
-                    mpi=1,
-                    cpus=20,
-                    mem='80G',  # shared between all CPUs
-                    time='24h',  # Was Xh on Noctua2
-                ),
-                env=env, cwd=jsalt2020,
-            )
-
-
-@clicommands
-def prepare_sim_libri_css():
-    jsalt2020 = Path('jsalt2020_simulate')
-    exproot = jsalt2020 / 'simdata'
-    librispeech = exproot / 'data-orig/LibriSpeech'
-
-    librispeech_json = Path('jsons/librispeech.json')
-    @maybe_execute(target=librispeech_json)
-    def _():
-        run([
-            sys.executable, '-m', 'mms_msg.databases.single_speaker.librispeech.create_json',
-            '--json-path', f'{librispeech_json}',
-            '--database-path', f'{librispeech}',
-        ])
-
-    sim_libri_css_json = Path('jsons/sim_libri_css.json')
-    @maybe_execute(target=sim_libri_css_json)
-    def _():
-        run(
-            # cmd_to_hpc(
-            [
-                sys.executable, '-m', 'tssep_data.database.sim_libri_css.create_json',
-                f'--librispeech_json={librispeech_json}',
-                f'--folder={jsalt2020 / "simdata" / "data"}',
-                f'--output_path={sim_libri_css_json}',
-            ],
-        #     mpi=1,
-        #     cpus=10,
-        #     mem='40G',  # shared between all CPUs
-        #     time='8h',  # Was Xh on Noctua2
-        #     shell=False,
-        # )
-        )
-
-    # First process dev, since it fails faster, when something doesn't work
-    datasets = ['dev', 'train', 'test']
-
-    tmp = Path(f'{jsalt2020}/simdata/data')
-
-    for target_sample in [
-        tmp / f'SimLibriCSS-train/wav/8271_ch0.wav',
-        tmp / f'SimLibriCSS-dev/wav/90_ch0.wav',
-
-        # I don't know why, but in the past I got 101 examples, now I get
-        # 96 examples from the sim_libri_css code.
-        # Since LibriCSS is the test dataset, it is not that important.
-        # LibriCSS uses leading zeros, so the file is named 089_ch0.wav
-        # or 89_ch0.wav.
-        tmp / f'SimLibriCSS-test/wav/*89_ch0.wav',
-    ]:
-        @maybe_execute(
-            name=f'split_files_{target_sample.relative_to(tmp).parts[0]}',
-            target_samples=[target_sample], overwrite_works=True,
-        )
-        def split_files():
-            # Split the original files to one file per channel (i.e. minimize the date that needs to be loaded)
-            run(cmd_to_hpc(
-                # f'{sys.executable} -m tssep_data.database.sim_libri_css.split_files {jsalt2020}/simdata/data/SimLibriCSS-*/wav/',
-                f'{sys.executable} -m tssep_data.database.sim_libri_css.split_files {target_sample.parent}/',
-                mpi=40,
-                mem='2G',
-                time='2h',  # Was 1h on Noctua2 for train
-                shell=True,
-            ))
-
-    @maybe_execute(target_samples=[
-        tmp / f'SimLibriCSS-train/wav/8271_ch0.wav',
-        tmp / f'SimLibriCSS-dev/wav/90_ch0.wav',
-        tmp / f'SimLibriCSS-test/wav/*89_ch0.wav',
-    ], overwrite_works=True)
-    def split_files():
-        # Split the original files to one file per channel (i.e. minimize the date that needs to be loaded)
-        run(cmd_to_hpc(
-            f'{sys.executable} -m tssep_data.database.sim_libri_css.split_files {jsalt2020}/simdata/data/SimLibriCSS-*/wav/',
-            mpi=40,
-            mem='2G',
-            time='2h',  # Was 1h on Noctua2
-            shell=True,
-        ))
-
-    tmp = Path(f'{jsalt2020}/simdata/data')
-    sim_libri_css_early_json = Path('jsons/sim_libri_css_early.json')
-    @maybe_execute(
-        target=sim_libri_css_early_json,
-        target_samples=[
-            tmp / f'SimLibriCSS-train/wav/8271speaker_reverberation_early_ch0.wav',
-            tmp / f'SimLibriCSS-dev/wav/90speaker_reverberation_early_ch0.wav',
-            tmp / f'SimLibriCSS-test/wav/*89speaker_reverberation_early_ch0.wav',
-        ]
-    )
-    def sim_libri_css_add_data():
-        # Add `speaker_reverberation_early_ch0` signal. Database does not contain a reverberant signal and plain on the fly computation is to expensive (Would need some optimization like in MMS-MSG to be fast enough)
-        run(cmd_to_hpc(
-            f'{sys.executable} -m tssep_data.database.sim_libri_css.add_data {sim_libri_css_json}',
-            mpi=40,
-            mem='6G',  # 4G might be enough
-            time='2h',  # Was 1.2h on Noctua2
-            shell=True,
-        ))
-
-    tmp = Path('data/jsons/sim_libri_css_early/target_vad/v2')
-    @maybe_execute(
-        target_samples=[
-            tmp / 'SimLibriCSS-dev.pkl',
-            tmp / 'SimLibriCSS-test.pkl',
-            tmp / 'SimLibriCSS-train.pkl',
-        ]
-    )
-    def sim_libri_css_create_vad():
-        run(cmd_to_hpc(
-            [
-                sys.executable, '-m', 'tssep_data.database.sim_libri_css.create_vad',
-                 'v2',
-                 f'{sim_libri_css_early_json}',
-                 '--key', '["audio_path"]["speaker_reverberation_early_ch0"]',
-            ],
-            mpi=10,
-            mem='3G',
-            time='1h',  # Was Xh on Noctua2
-            shell=False,
-            # force_local=True,
-        ))
-
-
-@clicommands
-def prepare_libri_css():
-    # run('just env_check', cwd='..')
-
-    # libri_css_for_release = Path('libri_css/exp/data-orig/for_release')
-    libri_css_for_release = Path('for_release')
-    if not (libri_css_for_release / 'all_res.json').exists():
-        print(f'{Red}Error: Something is wrong with the libri_css folder ({libri_css_for_release}).\n'
-              f'{(libri_css_for_release / "all_res.json")} does not exist.{Color_Off}'
-              )
-        sys.exit(1)
-
-    libriCSS_raw_json = Path('jsons/libriCSS_raw.json')
-    @maybe_execute(target=libriCSS_raw_json)
-    def _():
-        run([
-            sys.executable, '-m', 'tssep_data.database.libri_css.create_json',
-            '--output_path', f'{libriCSS_raw_json}',
-            f'--folder', f'{libri_css_for_release}',
-        ])
-
-    libriCSS_raw_chfiles_json = Path('jsons/libriCSS_raw_chfiles.json')
-    @maybe_execute(
-        target=libriCSS_raw_chfiles_json,
-        target_samples=[
-            libri_css_for_release / f'OV40/overlap_ratio_40.0_sil0.1_1.0_session9_actual39.9/record/raw_recording_ch6.wav'
-        ]
-    )
-    def _():
-        run(cmd_to_hpc(
-            f'{sys.executable} -m tssep_data.database.libri_css.split_files True {libriCSS_raw_json}',
-            mpi=1,
-            mem='1G',
-            time='1h',  # Was 2min with mpi=11 on Noctua2
-        ))
-
-    @maybe_execute(target='libri_css_ref.stm')
-    def _(target):
-        for_release_folder = Path('libri_css/exp/data-orig/for_release')
-        assert for_release_folder.exists(), for_release_folder
-        run(f'{sys.executable} -m tssep_data.database.libri_css.create_stm {for_release_folder} {target}')
-
-
-@clicommands
-def ivector():
-
-    ivector_dir = Path('ivector/librispeech_v1_extractor')
-    @maybe_execute(done_file=True, target=ivector_dir)
-    def download_pretrained_librispeech_model():
-        ivector_dir.mkdir(parents=True, exist_ok=True)
-        run(
-            'wget -c https://kaldi-asr.org/models/13/0013_librispeech_v1_extractor.tar.gz -O - | tar -xz',
-            cwd=ivector_dir,
-        )
-
-    KALDI_ROOT = os.environ['KALDI_ROOT']
-
-    cmd_sh = Path(f'{KALDI_ROOT}/egs/librispeech/s5/cmd.sh')
-    cmd_sh = Path(f'{KALDI_ROOT}/egs/librispeech/s5/cmd.sh')
-    @maybe_execute()
-    def ask_about_parallel_kaldi_files():
-        assert cmd_sh.exists(), cmd_sh
-
-        if confirm(
-                f'Is {os.fspath(cmd_sh)!r} and the conf folder already adjusted to your system? (No will trigger an interactive selection)'
-        ):
-            pass
-        else:
-            match user_select(
-                    'What do you use? (Ctrl+C to abort and do it manually)',
-                    ['run.pl', 'slurm.pl', 'queue.pl'],
-            ):
-                case 'run.pl':
-                    cmd_sh.write_text(cmd_sh.read_text().replace('"queue.pl --', '"run.pl --'))
-                case 'slurm.pl':
-                    cmd_sh.write_text(cmd_sh.read_text().replace('"queue.pl --', '"slurm.pl --'))
-                    print(f'Replaced "queue.pl" with "slurm.pl" in {cmd_sh}')
-                    slurm_conf = cmd_sh.parent / 'conf/slurm.conf'
-                    if not slurm_conf.exists():
-                        import tssep_data
-                        example_files = sorted(tssep_data.git_root.glob('tools/kaldi/conf/*slurm.conf'))
-                        assert example_files, (tssep_data.git_root, 'tools/kaldi/conf/*slurm.conf')
-                        file = user_select(
-                            'Do you want to use an example slurm.conf? (Ctrl+C to abort and create it manually)',
-                            {'Skip': 'Skip', **{os.fspath(f): f for f in example_files}},
-                        )
-                        if file != 'Skip':
-                            slurm_conf.write_text(file.read_text())
-                            print(f'Copied {file} to {slurm_conf}')
-                case 'queue.pl':
-                    pass
-                case otherwise:
-                    raise AssertionError(otherwise)
-
-    @maybe_execute(target=Path('ivector/simLibriCSS_oracle_ivectors.json'))
-    def _(target):
-        KALDI_ROOT = os.environ['KALDI_ROOT']
-        cwd = Path.cwd()
-        import paderbox as pb
-        storage_dir = pb.io.new_subdir.get_new_subdir(target.parent)
-        run([
-            f'{sys.executable}', '-m', 'tssep_data.data.embedding.calculate_ivector_v2', 'with',
-            f'eg.ivector_dir={cwd / ivector_dir}/exp/nnet3_cleaned',
-            f"eg.ivector_glob='*/ivectors/ivector_online.scp'",
-            f'eg.json_path={cwd}/jsons/sim_libri_css.json',
-            f'eg.kaldi_eg_dir="{KALDI_ROOT}/egs/librispeech/s5"',
-            f'eg.storage_dir="{storage_dir}"',
-            f'eg.output_json={target.name}'
-        ])
-
-    @maybe_execute(target=Path('ivector/libriCSS_oracle_ivectors.json'))
-    def _(target):
-        cwd = Path.cwd()
-        import paderbox as pb
-        storage_dir = pb.io.new_subdir.get_new_subdir(target.parent)
-
-        # It is not critical here, that the annotations have a small offset.
-        run([
-            sys.executable, '-m', 'tssep_data.data.embedding.calculate_ivector_v2', 'with',
-            f'eg.ivector_dir={cwd}/ivector/librispeech_v1_extractor/exp/nnet3_cleaned',
-            f'eg.ivector_glob=*/ivectors/ivector_online.scp',
-            f'eg.json_path={cwd}/jsons/libriCSS_raw_chfiles.json',
-            f'eg.kaldi_eg_dir="{KALDI_ROOT}/egs/librispeech/s5"',
-            f'eg.storage_dir="{storage_dir}"',
-            f'eg.output_json={target.name}',
-        ])
-
+def launch_training(
+        storage_dir,
+        name,
+        init_fn,
+        checkpoint=False,
+):
     cwd = Path.cwd()
-    rttm_folder = cwd / Path('espnet_libri_css_diarize_spectral_rttm')
+    storage_dir = storage_dir
 
-    if not rttm_folder.exists():
-        run('git clone https://huggingface.co/datasets/boeddeker/espnet_libri_css_diarize_spectral_rttm')
+    @maybe_execute(
+        target=(storage_dir / 'config.yaml').relative_to(cwd),
+        target_samples=[
+            (storage_dir).relative_to(cwd),
+            (storage_dir / 'Makefile').relative_to(cwd),
+        ]
+    )
+    def _():
+        init_fn()
 
-    run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {rttm_folder / "dev.rttm"} --out {rttm_folder / "orig_id"}')
-    run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {rttm_folder / "eval.rttm"} --out {rttm_folder / "orig_id"}')
+    q = f'Start/Submit the {name} training in {storage_dir!r}?'
+    if (storage_dir / 'checkpoints').exists():
+        q += ' (restart/continue)'
 
-    @maybe_execute(target=Path('ivector/libriCSS_espnet_ivectors.json'))
-    def _(target):
-        libriCSS_dev_rttm = rttm_folder / 'dev.rttm'
-        libriCSS_eval_rttm = rttm_folder / 'eval.rttm'
+    match sel := user_select(q, ['slurm', 'local'], ['slurm', 'local'][shutil.which('sbatch') is None]):
+        case 'slurm':
+            run(
+                f'{sys.executable} -m tssep_data.train.run sbatch with config.yaml',
+                cwd=storage_dir,
+            )
+        case 'local':
+            run(
+                f'{sys.executable} -m tssep_data.train.run with config.yaml',
+                cwd=storage_dir,
+            )
+        case 'skip':
+            pass
+        case _:
+            raise RuntimeError(sel)
 
-        import paderbox as pb
-        storage_dir = pb.io.new_subdir.get_new_subdir(target.parent)
 
+@clicommands
+def tsvad():
+    cwd = Path.cwd()
+    VAD_STORAGE_DIR = cwd / 'tsvad'
+    VAD_TARGET_DIR = cwd / 'data/jsons/sim_libri_css_early/target_vad/v2'
+
+    launch_training(
+        VAD_STORAGE_DIR,
+        'TS-VAD',
+        init_fn=lambda: run([
+            sys.executable, '-m', 'tssep_data.train.run', 'init', 'with',
+            # f'vad',
+            f'{cwd}/cfg/common.yaml',
+            f'eg.trainer.storage_dir={VAD_STORAGE_DIR}',
+            # f'eg.trainer.model.aux_data.db.json_path={cwd}/data/ivector/simLibriCSS_oracle_ivectors.json',
+            # f'eg.trainer.model.reader.db.json_path={cwd}/data/jsons/sim_libri_css.json',
+            # f'eg.trainer.model.reader.db_librispeech.json_path={cwd}/data/jsons/librispeech.json',
+            # f'eg.trainer.model.reader.vad.files.SimLibriCSS-train={VAD_TARGET_DIR}/SimLibriCSS-train.pkl',
+            # f'eg.trainer.model.reader.vad.files.SimLibriCSS-dev={VAD_TARGET_DIR}/SimLibriCSS-dev.pkl',
+            # f'eg.trainer.model.reader.vad.files.SimLibriCSS-test={VAD_TARGET_DIR}/SimLibriCSS-test.pkl',
+            f'eg.trainer.stop_trigger=[100000,"iteration"]',
+        ])
+    )
+
+
+def get_checkpoint(storage_dir):
+    assert storage_dir / 'checkpoints', storage_dir / 'checkpoints'
+    import natsort
+
+    checkpoints = natsort.natsorted([
+        f
+        for f in (storage_dir / 'checkpoints').glob('ckpt_*.pth')
+        if not f.is_symlink()
+    ])
+    assert checkpoints, storage_dir / 'checkpoints'
+
+    checkpoint = user_select(
+        'Which checkpoint should be used for TS-SEP as initialization?',
+        {str(c): c for c in checkpoints},
+    )
+    assert checkpoint, checkpoint
+    return checkpoint
+
+
+@clicommands
+def tssep():
+    cwd = Path.cwd()
+    VAD_STORAGE_DIR = cwd / 'tsvad'
+    SEP_STORAGE_DIR = cwd / 'tssep'
+
+    def init_fn():
+        checkpoint = get_checkpoint(VAD_STORAGE_DIR)
         run([
-            sys.executable, '-m', 'tssep_data.data.embedding.calculate_ivector_v2',
-            'with',
-            f'eg.ivector_dir={cwd}/ivector/librispeech_v1_extractor/exp/nnet3_cleaned',
-            f'eg.ivector_glob=*/ivectors/ivector_online.scp',
-            f'eg.json_path={cwd}/jsons/libriCSS_raw_chfiles.json',
-            f'eg.kaldi_eg_dir="{KALDI_ROOT}/egs/librispeech/s5"',
-            f'eg.storage_dir="{storage_dir}"',
-            f'eg.output_json={target.name}',
-            f'''eg.activity={{'type':'rttm','rttm':[{str(libriCSS_dev_rttm)!r},{str(libriCSS_eval_rttm)!r}]}}''',
+            sys.executable, '-m', 'tssep.train.run', 'init', 'with',
+            f'sep',
+            f'eg.trainer.storage_dir={SEP_STORAGE_DIR}',
+            f'eg.trainer.stop_trigger=[100000,"iteration"]',
+            # f'eg.init_ckpt.factory=tssep.train.init_ckpt.InitCheckPointVAD2Sep',
+            f'eg.init_ckpt.init_ckpt={checkpoint}',
         ])
 
+    launch_training(
+        SEP_STORAGE_DIR,
+        'TS-SEP',
+        init_fn=init_fn,
+    )
 
-add_stage_cmd(clicommands)
+
+@clicommands
+def espnet_gss():
+    cwd = Path.cwd()
+    STORAGE_DIR = cwd / 'espnet'
+
+    dev = cwd / Path('data/espnet_libri_css_diarize_spectral_rttm/orig_id/dev.rttm')
+    eval = cwd / Path('data/espnet_libri_css_diarize_spectral_rttm/orig_id/eval.rttm')
+
+    STORAGE_DIR.mkdir()
+
+    run(f'{sys.executable} -m meeteval.io.chime7 from_rttm {dev} > {STORAGE_DIR / "c7_dev.json"}')
+    run(f'{sys.executable} -m meeteval.io.chime7 from_rttm {eval} > {STORAGE_DIR / "c7_eval.json"}')
+    pb.io.dump(pb.io.load(STORAGE_DIR / "c7_dev.json") + pb.io.load(STORAGE_DIR / "c7_eval.json"), STORAGE_DIR / "c7.json")
+
+    run(f'{sys.executable} -m meeteval.io.chime7 from_rttm {eval} > {STORAGE_DIR / "c7_dev.json"}')
+
+    # /scratch/hpc-prf-nt1/cbj/deploy/css/egs/libri_css/data/jsons/libriCSS_raw_chfiles.json
+    run(cmd_to_hpc(
+        f"{sys.executable} -m tssep.eval.gss_v2 c7.json {cwd}/data/jsons/libriCSS_raw_chfiles.json --out_folder=gss --channel_slice=: && python -m fire tssep.eval.makefile gss_makefile gss",
+        job_name=f'espnet_gss_v2',
+        block=False,
+        shell=True,
+        time='24h',
+        mem='4G',
+        mpi='40',
+        shell_wrap=True,
+    ), cwd=STORAGE_DIR)
+
+
+@clicommands
+def tensorboard_symlink_tree():
+    makefile = f"""
+tree1days:
+	find . -xtype l -delete  # Remove broken symlinks: https://unix.stackexchange.com/a/314975/283777
+	{sys.executable} -m padertorch.contrib.cb.tensorboard_symlink_tree --prefix=.. ../*/*tfevents* --max_age=1days
+
+tree7days:
+	find . -xtype l -delete  # Remove broken symlinks: https://unix.stackexchange.com/a/314975/283777
+	{sys.executable} -m padertorch.contrib.cb.tensorboard_symlink_tree --prefix=.. ../*/*tfevents* --max_age=7days
+
+tree:
+	find . -xtype l -delete  # Remove broken symlinks: https://unix.stackexchange.com/a/314975/283777
+	{sys.executable} -m padertorch.contrib.cb.tensorboard_symlink_tree --prefix=.. ../*/*tfevents*
+    """
+    file = Path('tensorboard')
 
 
 def _create_makefile():
@@ -410,7 +182,7 @@ def _create_makefile():
      - Autocomplete
 
     >>> _create_makefile()  # doctest: +ELLIPSIS
-    Wrote .../egs/libri_css/data/Makefile
+    Wrote .../egs/libri_css/Makefile
     """
     clicommands.create_makefile(__file__)
 
@@ -423,6 +195,6 @@ if __name__ == '__main__':
         os.chdir(pwd)
 
     import fire
-    # run('just env_check', cwd='..')
     env_check()
+    add_stage_cmd(clicommands)
     fire.Fire(clicommands.to_dict(), command=None if sys.argv[1:] else 'stage')
