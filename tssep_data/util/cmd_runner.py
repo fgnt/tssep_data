@@ -37,6 +37,7 @@ import os
 import shlex
 import re
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,8 @@ def run(cmd, cwd=None, env=None):
     cmd_str = cmd if isinstance(cmd, str) else shlex.join(cmd)
     print(f'Running {Green}{cmd_str}{Color_Off} in {Green}{cwd or "."}{Color_Off} with env={Green}{env}{Color_Off}')
     env_ = env if env is None else {**os.environ, **env}
+
+    start = time.time()
     with DelayedKeyboardInterrupt():
         cp = subprocess.run(cmd, shell=isinstance(cmd, str), cwd=cwd,
                             check=False, env=env_)
@@ -93,6 +96,9 @@ def run(cmd, cwd=None, env=None):
         print(
             f'{Red}Cmd\n\t{cmd_str}\nin {cwd or os.getcwd()} with env={env}\nfailed ({exitmsg}).{Color_Off}')
         sys.exit(cp.returncode)
+    else:
+        print(f'Finished {Green}{cmd_str}{Color_Off} in {Green}{cwd or "."}{Color_Off} in {(time.time() - start) / 3600:.2f}h')
+
     return cp
 
 
@@ -220,6 +226,9 @@ def maybe_execute(
         target_samples=None,
         overwrite_works=False,  # Whether the target(s) have to be (manually) deleted or not.
         call_immediately=True,
+        *,
+        source=None,
+        sources=None,
 ):
     """
 
@@ -285,7 +294,22 @@ def maybe_execute(
             target_samples = [Path(t) for t in target_samples]
             criterions.extend([exists_with_glob(t) for t in target_samples])
 
-        if all(criterions):
+        assert source is None or sources is None, ('Use either source or sources, not both.', source, sources)
+        if source is not None:
+            if not Path(source).exists():
+                execute = False
+                print(f'WARNING:{name}: Skip, since source {source!r} doesn\'t exist.')
+        elif sources is not None:
+            if not all(Path(s).exists() for s in sources):
+                execute = False
+                m = {True: 'exists', False: "doesn't exists"}
+                print(f'WARNING:{name}: Skip, since at least one source doesn\'t exist:',
+                      {f'{s}: {m[Path(s).exists()]}' for s in sources})
+
+        if execute is False:
+            # At least one source doesn't exist.
+            pass
+        elif all(criterions):
             execute = False
             if done_file:
                 print(f'{name}: Skip, since {done_file!r} exists. Delete it to rerun.')
@@ -295,8 +319,9 @@ def maybe_execute(
                 print(f'{name}: Skip, since target_samples {list(map(os.fspath, target_samples))!r} exists. Delete them to rerun.')
         elif not any(criterions):
             execute = True
-        elif overwrite_works:
-            print(f'{name}: Issue some bot not all files exists:')
+        # elif overwrite_works:
+        else:
+            print(f'{name}: Issue some but not all files exists:')
             tmp = paderbox.utils.mapping.Dispatcher({True: f'{Green}exists{Color_Off}', False: f"{Red}doesn't exists{Color_Off}"})
             if done_file:
                 print(' '*4, f'- {done_file}: {tmp[done_file.exists()]}')
@@ -313,7 +338,11 @@ def maybe_execute(
             #     sys.exit(1)
             # execute = True
 
-            sel = user_select(f'{name}: Rerun?', ['No', 'Yes', '(Debug option) Skip and touch done file'])
+            sel = user_select(f'{name}: Rerun?', [
+                'No',
+                'Yes' if overwrite_works else 'Yes (disabled for this task, you have to clean up manually)',
+                '(Debug option) Skip and touch done file',
+            ])
             if sel == 'No':
                 execute = False
             elif sel == 'Yes':
@@ -329,6 +358,12 @@ def maybe_execute(
             kwargs = {}
             if 'target' in parameters:
                 kwargs['target'] = target
+            if 'source' in parameters:
+                assert source is not None, (source, func, parameters)
+                kwargs['source'] = source
+            if 'sources' in parameters:
+                assert sources is not None, (sources, func, parameters)
+                kwargs['sources'] = sources
 
             _ = func(**kwargs)
             if target:
@@ -341,6 +376,8 @@ def maybe_execute(
             if done_file:
                 touch(done_file)
                 done_file.write_text(func.__qualname__)
+        else:
+            print(f'{name}: Skipped.')
         return func
     if call_immediately:
         return wrapper
