@@ -156,6 +156,9 @@ def mixlog_entry_to_example(
 
     channels = pb.io.audioread.audio_channels(obs)
 
+    if len(d['speakers']) != 8:
+        return
+
     ex = {
         'audio_path': {
             'observation': [f'{obs.with_stem(obs.stem + f"_ch{c}")}' + ('.gz' if compressed else '') for c in range(channels)],
@@ -228,6 +231,9 @@ def main(
             mixlog_entry_to_example(d, librispeech_dataset)
             for d in tqdm.tqdm(pb.io.load(dataset_folder / 'mixlog.json'), desc=dataset_name)
         ]
+        len_examples = len(examples)
+        examples = list(filter(lambda x: x is not None, examples))
+        assert len(examples) > len_examples // 2, (len(examples), len_examples)  # roughly 1% of examples have less than 8 speakers. Remove them.
         len_examples = len(examples)
         examples = dict(examples)
         assert len(examples) == len_examples, (len(examples), len_examples)
