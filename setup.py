@@ -122,10 +122,8 @@ setup(
         'fire',
         'sacred',
         'tqdm',
-        'dlp_mpi @ git+http://github.com/fgnt/dlp_mpi',  # Make a release and remove git+
         'editdistance',
         'natsort',
-        'meeteval @ git+http://github.com/fgnt/meeteval',  # Make a release and remove git+
         'openai-whisper',
         'psutil',
         'pyroomacoustics',
@@ -136,8 +134,10 @@ setup(
         'torch',
         'torchvision',
         'torchaudio',
-        'paderbox @ git+http://github.com/fgnt/paderbox',  # Has the pypi version all required features?
-        'padertorch @ git+http://github.com/fgnt/padertorch',  # Has the pypi version all required features?
+        'meeteval',
+        'dlp_mpi',
+        'paderbox',
+        'padertorch',
         'pb_bss @ git+http://github.com/fgnt/pb_bss',
         'rirgen @ git+https://github.com/boeddeker/rirgen',
         'sms_wsj @ git+https://github.com/fgnt/sms_wsj',
