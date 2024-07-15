@@ -26,7 +26,9 @@ def libri_css():
         def _():
             link = 'https://docs.google.com/uc?export=download&id=1Piioxd5G_85K9Bhcr8ebdhXx0CnaHy7l'
             if shutil.which('gdown'):
-                run(['gdown', link])
+                # Working gdown versions: 4.7.3, 5.2.0
+                # Failed version: 3.15.0, 4.6.4
+                run(['gdown', link])  # gdown version 3.15.0 and 4.6.4 produces access denied. You may want to update to "pip install 'gdown>=5'"
             else:
                 print(f'{Red}Download the `for_release.zip` file manually '
                       f'(open {link!r} and click download) or '
@@ -208,18 +210,19 @@ def prepare_sim_libri_css():
         run(cmd_to_hpc(
             f'{sys.executable} -m tssep_data.database.sim_libri_css.add_data {source}',
             mpi=40,
-            mem='6G',  # 4G might be enough
+            mem='6G',  # 4G might be enough, but I am not sure about peaks
             time='2h',  # Was 1.2h on Noctua2
             shell=True,
         ))
 
-    tmp = Path('data/jsons/sim_libri_css_early/target_vad/v2')
+    tmp = Path('jsons/sim_libri_css_early/target_vad/v2')
     @maybe_execute(
         target_samples=[
             tmp / 'SimLibriCSS-dev.pkl',
             tmp / 'SimLibriCSS-test.pkl',
             tmp / 'SimLibriCSS-train.pkl',
-        ]
+        ],
+        overwrite_works=True,
     )
     def sim_libri_css_create_vad():
         run(cmd_to_hpc(
@@ -255,7 +258,8 @@ def prepare_sim_libri_css():
             tmp / f'SimLibriCSS-train/wav/8271speaker_reverberation_early_ch6.wav',
             tmp / f'SimLibriCSS-dev/wav/90speaker_reverberation_early_ch6.wav',
             tmp / f'SimLibriCSS-test/wav/*89speaker_reverberation_early_ch6.wav',
-        ]
+        ],
+        overwrite_works=True,
     )
     def sim_libri_css_ch_add_data(target):
         # Add `speaker_reverberation_early_ch0` signal. Database does not
@@ -267,12 +271,23 @@ def prepare_sim_libri_css():
         run(cmd_to_hpc(
             f'{sys.executable} -m tssep_data.database.sim_libri_css.add_data {source}',
             mpi=80,
-            mem='6G',  # 4G might be enough
-            time='4h',  # Was 3h+20m on Noctua1
+            mem='6G',  # 4G might be enough, but I am not sure about peaks
+            time='5h',  # Was 3h+20m on Noctua1 with 80 cores
             shell=True,
         ))
 
     # python -m tssep_data.data.cli.json_split_multichannel sim_libri_css.json --clear=False --original_id=original_id
+
+    for source in [
+            'jsons/sim_libri_css.json',
+            'jsons/sim_libri_css_ch.json',
+            'jsons/sim_libri_css_early.json',
+            'jsons/sim_libri_css_ch_early.json',
+    ]:
+        target = Path(f'{source}.gz')
+        @maybe_execute(target=target, source=source)
+        def compress_json(target, source):
+            run(f'gzip -f -k {source}')
 
 
 @clicommands
@@ -311,6 +326,18 @@ def prepare_libri_css():
             mem='1G',
             time='1h',  # Was 2min with mpi=11 on Noctua2
         ))
+
+    @maybe_execute(target='jsons/libriCSS_raw_chfiles_ch.json')
+    def _(target):
+        target = Path(target)
+        source = target.with_name(target.name.replace('_ch.json', '.json'))
+        assert source != target, (source, target)
+        run([
+            sys.executable, '-m', 'tssep_data.data.cli.json_split_multichannel',
+            f'{source}',
+            '--clear=False',
+            '--original_id=original_id',
+        ])
 
     @maybe_execute(target='libri_css_ref.stm')
     def _(target):
@@ -375,6 +402,7 @@ def ivector():
         ('ivector/simLibriCSS_oracle_ivectors.json', 'jsons/sim_libri_css.json'),
         ('ivector/simLibriCSS_ch_oracle_ivectors.json', 'jsons/sim_libri_css_ch.json'),
         ('ivector/libriCSS_oracle_ivectors.json', 'jsons/libriCSS_raw_chfiles.json'),  # It is not critical here, that the annotations have a small offset.
+        ('ivector/libriCSS_ch_oracle_ivectors.json', 'jsons/libriCSS_raw_chfiles_ch.json'),
     ]:
         assert Path(source).exists(), source
         @maybe_execute(target=Path(target))
@@ -416,8 +444,17 @@ def ivector():
     if not rttm_folder.exists():
         run('git clone https://huggingface.co/datasets/boeddeker/espnet_libri_css_diarize_spectral_rttm')
 
-    run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {rttm_folder / "dev.rttm"} --out {rttm_folder / "orig_id"}')
-    run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {rttm_folder / "eval.rttm"} --out {rttm_folder / "orig_id"}')
+    for file in [
+        rttm_folder / 'dev.rttm',
+        rttm_folder / 'eval.rttm',
+    ]:
+        # assert file.exists(), file
+        target = file.parent / 'orig_id' / file.name
+        @maybe_execute(target=target, source=file)
+        def fix_exampleid(target, source):
+            run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {source} --out {target.parent}')
+    # run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {rttm_folder / "dev.rttm"} --out {rttm_folder / "orig_id"}')
+    # run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {rttm_folder / "eval.rttm"} --out {rttm_folder / "orig_id"}')
 
     @maybe_execute(target=Path('ivector/libriCSS_espnet_ivectors.json'))
     def _(target):
