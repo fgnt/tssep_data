@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import tempfile
 from tssep.train.run import *
 
@@ -45,8 +46,48 @@ def diff(_config, eg, storage_dir=None):
         #     backup_config(config_yaml)
         subprocess.run(['icdiff', str(config_yaml), str(config_tmp)], env=os.environ)
 
-# @ex.named_config
-# def vad():
+
+@ex.command
+def sbatch(
+        eg,
+        dry_run=False,
+        gpus=1,
+):
+    """
+    Create a sbatch script and submit it to the cluster.
+    """
+    storage_dir = Path(eg['trainer']['storage_dir'])
+
+    main_python_path = pt.configurable.resolve_main_python_path()
+    job_name = f'train_{storage_dir.name}'
+
+    gpus = int(gpus)
+
+    from tssep_data.util.slurm import SlurmResources
+    sr = SlurmResources(
+        gpus=gpus,
+        cpus=8 if gpus <= 1 else 6 * gpus,
+        mem='45GB' if gpus <= 1 else f'{25 * gpus}GB',
+        time='3 days',
+    )
+    file = storage_dir / 'run_sbatch.sh'
+    sr.dump_sbatch_script(
+        file,
+        options=[
+            '--job-name', job_name,
+            '--chdir', os.getcwd(),
+            '--comment', f'{job_name}_$SLURM_JOB_ID',
+        ],
+        bash=[
+            f'{sr.mpi_cmd} {sys.executable} -m {main_python_path} with config.yaml'
+        ]
+    )
+
+    if not dry_run:
+        subprocess.run([sr.sbatch_executable, str(file)], check=True, env=os.environ)
+    else:
+        print(f'Would submit {file}, but dry_run is True.')
+
 
 from tssep_data.train.makefile import makefile
 
