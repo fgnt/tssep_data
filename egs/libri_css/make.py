@@ -7,6 +7,7 @@ import subprocess
 import sys
 import signal
 import logging
+import decimal
 import shutil
 from pathlib import Path
 
@@ -63,7 +64,7 @@ def launch_training(
 def tsvad():
     cwd = Path.cwd()
     VAD_STORAGE_DIR = cwd / 'tsvad'
-    VAD_TARGET_DIR = cwd / 'data/jsons/sim_libri_css_early/target_vad/v2'
+    # VAD_TARGET_DIR = cwd / 'data/jsons/sim_libri_css_early/target_vad/v2'
 
     launch_training(
         VAD_STORAGE_DIR,
@@ -72,6 +73,7 @@ def tsvad():
             sys.executable, '-m', 'tssep_data.train.run', 'init', 'with',
             # f'vad',
             f'{cwd}/cfg/common.yaml',
+            f'{cwd}/cfg/tsvad.yaml',
             f'eg.trainer.storage_dir={VAD_STORAGE_DIR}',
             # f'eg.trainer.model.aux_data.db.json_path={cwd}/data/ivector/simLibriCSS_oracle_ivectors.json',
             # f'eg.trainer.model.reader.db.json_path={cwd}/data/jsons/sim_libri_css.json',
@@ -88,16 +90,29 @@ def get_checkpoint(storage_dir):
     assert storage_dir / 'checkpoints', storage_dir / 'checkpoints'
     import natsort
 
+    ckpt_dir = storage_dir / 'checkpoints'
+
     checkpoints = natsort.natsorted([
         f
-        for f in (storage_dir / 'checkpoints').glob('ckpt_*.pth')
+        for f in ckpt_dir.glob('ckpt_*.pth')
         if not f.is_symlink()
     ])
-    assert checkpoints, storage_dir / 'checkpoints'
+    assert checkpoints, ckpt_dir
 
+    d = pb.io.load(ckpt_dir / 'ckpt_latest.pth', unsafe=True)
+    try:
+        ckpt_ranking = pb.utils.mapping.Dispatcher(
+            d['hooks']['BackOffValidationHook']['ckpt_ranking'])
+    except KeyError:
+        raise
+        ckpt_ranking = {}
+    else:
+        ckpt_ranking = dict(ckpt_ranking)
+
+    cwd = Path.cwd()
     checkpoint = user_select(
         'Which checkpoint should be used for TS-SEP as initialization?',
-        {str(c): c for c in checkpoints},
+        {f'{os.path.relpath(c, cwd)} ({decimal.Decimal(f"{ckpt_ranking[c.name]:.2g}")})': c for c in checkpoints},
     )
     assert checkpoint, checkpoint
     return checkpoint
@@ -113,7 +128,8 @@ def tssep():
         checkpoint = get_checkpoint(VAD_STORAGE_DIR)
         run([
             sys.executable, '-m', 'tssep.train.run', 'init', 'with',
-            f'sep',
+            f'{cwd}/cfg/common.yaml',
+            f'{cwd}/cfg/tssep.yaml',
             f'eg.trainer.storage_dir={SEP_STORAGE_DIR}',
             f'eg.trainer.stop_trigger=[100000,"iteration"]',
             # f'eg.init_ckpt.factory=tssep.train.init_ckpt.InitCheckPointVAD2Sep',
