@@ -14,6 +14,9 @@ def makefile(_config, eg, dump=True):
     assert main_python_path != eval_python_path, (main_python_path, eval_python_path)
 
     m = train_makefile(_config, eg, dump=False)
+
+    m.phony['sbatch'] = f'python -m {main_python_path} sbatch with config.yaml'
+
     m.phony['eval_init'] = f'python -m {eval_python_path} init with config.yaml default'
     m.phony['eval_init_interactive'] = f'python -m tssep.eval.init_interactive'
 
