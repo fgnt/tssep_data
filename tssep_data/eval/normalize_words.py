@@ -4,7 +4,7 @@
 python -m tssep.eval.normalize_words c7_words_nemo_fix.json
 
 """
-from tssep.io.json_results import load_json, dump_json
+from tssep_data.io.json_results import load_json, dump_json
 
 
 def main(*jsons):

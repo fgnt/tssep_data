@@ -10,7 +10,7 @@ from pathlib import Path
 import paderbox as pb
 import padertorch as pt
 import meeteval.io.chime7
-from tssep.io.json_results import load_json, dump_json
+from tssep_data.io.json_results import load_json, dump_json
 
 
 class StartOffset:

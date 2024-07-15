@@ -8,7 +8,7 @@ Origin: Communications Department, Paderborn University, Germany
 from pathlib import Path
 
 import tssep
-from tssep.util.cmd_runner import run
+from tssep_data.util.cmd_runner import run
 
 def main(file='c7_words_nemo.json'):
     """
