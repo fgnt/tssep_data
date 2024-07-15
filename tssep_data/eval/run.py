@@ -45,13 +45,14 @@ import paderbox as pb
 from paderbox.utils.nested import deflatten
 
 import tssep
+import tssep_data.data
 import tssep.train.enhancer
-from tssep.util.bash import c
-from tssep.util.slurm import SlurmResources
+from tssep_data.util.bash import c
+from tssep_data.util.slurm import SlurmResources
 from tssep.train.run import dump_config
 from tssep.train.experiment import Experiment
-from tssep.eval.experiment import EvalExperiment
-
+from tssep_data.eval.experiment import EvalExperiment
+from tssep_data.data.constants import eg_dir
 
 ex = sacred.Experiment('extract_eval')
 
@@ -75,7 +76,7 @@ def config():
             consider_mpi=True, mkdir=True)
 
     Experiment.get_config(eg)  # Fill defaults
-    tssep.eval.experiment.EvalExperiment.get_config(eeg)  # Fill defaults
+    tssep_data.eval.experiment.EvalExperiment.get_config(eeg)  # Fill defaults
 
     ex.observers.append(FileStorageObserver(Path(eeg['eval_dir']) / 'sacred'))
 
@@ -90,17 +91,17 @@ def config():
 @ex.named_config
 def default():
     eg = deflatten({
-        'trainer.model.reader.eval_dataset_name': 'libri_css',
-        'trainer.model.reader.datasets.libri_css.observation': '["observation"][:]',
+        # 'trainer.model.reader.eval_dataset_name': 'libri_css',
+        # 'trainer.model.reader.datasets.libri_css.observation': '["observation"][:]',
         'trainer.model.reader.data_hooks.tasks.auxInput.estimate': {
             'SimLibriCSS-dev': True,
             # Disable assert, that checks, whether the speaker_ids between ivector and dataset match.
             # At least one speaker has no non-overlapping activity and hence no ivector.
         },
         'trainer.model.reader.data_hooks.tasks.auxInput.json': [
-            tssep.git_root / 'egs/libri_css/data/ivector/simLibriCSS_oracle_ivectors.json',
+            eg_dir / 'data/ivector/simLibriCSS_oracle_ivectors.json',
             # tssep.git_root / 'egs/libri_css/data/ivector/libriCSS_oracle_ivectors.json',
-            tssep.git_root / 'egs/libri_css/data/ivector/libriCSS_espnet_ivectors.json',
+            eg_dir / 'data/ivector/libriCSS_espnet_ivectors.json',
         ],
 
     })
@@ -113,7 +114,7 @@ def default():
         'probability_to_segments.max_kernel': 161,
         'probability_to_segments.min_kernel': 81,
         'probability_to_segments.min_frames': 40,  # No effect, if max_kernel - min_kernel >= min_frames
-        'nn_segmenter.factory': tssep.eval.experiment.Segmenter,  # Reduce memory consumption
+        'nn_segmenter.factory': tssep_data.eval.experiment.Segmenter,  # Reduce memory consumption
         'nn_segmenter.length': 4000,
         'nn_segmenter.shift': 2000,
         'enhancer.factory': tssep.train.enhancer.ClassicBF_np,
@@ -231,7 +232,7 @@ def main(_run, _config, eg, eeg):
     dump_config(storage_dir=eeg.eval_dir, _config=_config)
     sacred.commands.print_config(_run)
 
-    if tssep.util.bash.location == 'MERL':
+    if tssep_data.util.bash.location == 'MERL':
         # Note: This is virtual memory
         import resource
         soft, hard = resource.getrlimit(resource.RLIMIT_AS)
@@ -245,8 +246,7 @@ def main(_run, _config, eg, eeg):
     eeg.eval(eg=eg)
 
 
-
-from tssep.eval.makefile import makefile
+from tssep_data.eval.makefile import makefile
 makefile = ex.command(unobserved=True)(makefile)
 
 if __name__ == '__main__':
@@ -254,5 +254,5 @@ if __name__ == '__main__':
     print(shlex.join(psutil.Process().cmdline()))
     ex.run_commandline()
 
-    from tssep.util.slurm import shutdown_soon
+    from tssep_data.util.slurm import shutdown_soon
     shutdown_soon()  # Sometimes the Job gets stuck.
