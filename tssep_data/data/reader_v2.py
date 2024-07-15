@@ -1,10 +1,3 @@
-"""
-
-Licence MIT
-Origin: Communications Department, Paderborn University, Germany
-
-"""
-
 import os
 import sys
 
@@ -14,6 +7,7 @@ if os.path.dirname(os.path.abspath(__file__)) == sys.path[0]:
 
 import dataclasses
 import functools
+from pathlib import Path
 
 import lazy_dataset
 from lazy_dataset.database import JsonDatabase
@@ -22,13 +16,14 @@ import numpy as np
 import paderbox as pb
 import padertorch as pt
 
-from tssep_data.util.access import ItemAccessor
-from tssep_data.data import data_hooks
 import tssep
 import tssep_data
 
+# define egs_dir and json_dir before importing data_hooks
+from tssep_data.util.access import ItemAccessor
+from tssep_data.data import data_hooks
 
-egs_dir = tssep.git_root / 'egs'
+from tssep_data.data.constants import json_dir, egs_dir, eg_dir
 
 
 def _get_segment(num_samples, segment_num_samples,
@@ -81,27 +76,13 @@ def _get_segment(num_samples, segment_num_samples,
 
 @dataclasses.dataclass
 class PBJsonDSMeta(pt.Configurable):
-    json_path: str  # = '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/chime7/data/chime7.json'
+    json_path: str  # = '.../tssep_data/egs/libri_css/data/jsons/<...>.json'
     dataset_name: str
     num_speakers: int
     sample_rate: int = 16_000
     observation: (str, slice) = "['observation'][:1]"
 
-    # def __post_init__(self):
-    #     self.observation = self.observation)
-
-    def get_dataset(
-            self,
-            reader: 'Reader',
-            # load_audio=True,
-            # load_keys=['observation'],
-            # channel_slice=None,
-            # segment_num_samples=_NO_VALUE,
-    ):
-        # if self.json_path not in reader.db_cache:
-        #     reader.db_cache[self.json_path] = JsonDatabase(
-        #         self.json_path
-        #     )
+    def get_dataset(self, reader: 'Reader'):
         ds = reader.get_db(self.json_path).get_dataset(self.dataset_name)
 
         if self.num_speakers is not None:
@@ -133,15 +114,7 @@ class PBJsonDSMeta(pt.Configurable):
             ex['uem'] = ex.get('start', 0), ex.get('end', None)
         return ex
 
-    def load_audio(
-            self,
-            ex,
-            load_keys=['observation'],
-            # channel_slice=None,
-            # segment_num_samples=_NO_VALUE,
-    ):
-        # self.add_uem(ex)
-
+    def load_audio(self, ex, load_keys=['observation']):
         start = ex.get('start', 0)
         end = ex.get('end', None)
 
@@ -153,7 +126,7 @@ class PBJsonDSMeta(pt.Configurable):
                     ItemAccessor(k_)(ex['audio_path']), expected_sample_rate=self.sample_rate,
                     start=start, stop=end)
             elif k in ['vad']:
-                # Might be already added by an hook.
+                # Might be already added by a hook.
                 assert ex['audio_data'][k].shape[-1] == end - start, (ex['audio_data'][k].shape, end - start, start, end)
             else:
                 raise RuntimeError(k, ex['audio_data'].keys())
@@ -189,8 +162,6 @@ class SegmentPBJsonDSMeta(PBJsonDSMeta):
             ex,
             load_keys=['observation'],
     ):
-        # self.add_uem(ex)
-
         start = ex.get('start', 0)
         end = ex.get('end', None)
 
@@ -257,16 +228,17 @@ class DatasetCfgs:
     @staticmethod
     def sim_libri_css():
         """
-        >>> reader = Reader.new()
+        >>> reader = Reader.new(updates=dict(datasets=Reader.all_dataset_cfgs()))
         >>> dsmeta = reader.datasets['SimLibriCSS-train-960_000']
-        >>> dsmeta
-        SegmentPBJsonDSMeta(json_path='/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css.json', dataset_name='SimLibriCSS-train', num_speakers=8, sample_rate=16000, observation="['observation'][:1]", segment_num_samples=960000, minimum_segment_num_samples=None, mixup=None)
+        >>> dsmeta  # doctest: +ELLIPSIS
+        SegmentPBJsonDSMeta(json_path='.../jsons/sim_libri_css_early.json', dataset_name='SimLibriCSS-train', num_speakers=8, sample_rate=16000, observation="['observation'][:1]", segment_num_samples=960000, minimum_segment_num_samples=None, mixup=0.5)
         >>> ds = reader.__call__('SimLibriCSS-train-960_000')
-        >>> ds
-              DictDataset(name='SimLibriCSS-train', len=8550)
-            MapDataset(_pickle.loads)
-          SliceDataset([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, ...])
-        MapDataset(functools.partial(<bound method SegmentPBJsonDSMeta.load_audio of SegmentPBJsonDSMeta(json_path='/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css.json', dataset_name='SimLibriCSS-train', num_speakers=8, sample_rate=16000, observation="['observation'][:1]", segment_num_samples=960000, minimum_segment_num_samples=None, mixup=None)>, load_keys=['observation']))
+        >>> ds  # doctest: +ELLIPSIS
+                DictDataset(name='SimLibriCSS-train', len=8461)
+              MapDataset(_pickle.loads)
+            SliceDataset([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, ...])
+          MapDataset(<bound method PBJsonDSMeta.add_uem of SegmentPBJsonDSMeta(json_path='.../jsons/sim_libri_css_early.json', dataset_name='SimLibriCSS-train', num_speakers=8, sample_rate=16000, observation="['observation'][:1]", segment_num_samples=960000, minimum_segment_num_samples=None, mixup=0.5)>)
+        MapDataset(functools.partial(<bound method Reader.prepare of Reader(datasets={...}, ..., data_hooks=...)>, load_audio_fn=<bound method SegmentPBJsonDSMeta.load_audio of SegmentPBJsonDSMeta(..., dataset_name='SimLibriCSS-train', ...)>, load_audio=True, load_keys=['observation']))
         >>> print(pb.utils.pretty.pretty(ds[0], max_seq_length=[20, 2, 1]))
         {'session_id': 'S03',
          'audio_path': {'observation': ['/scratch/hpc-prf-nt2/cbj/deploy/espnet_chime7/egs2/chime7_task1/diar_asr1/chime7_task1/chime6/audio/train/S03_U01.CH1.wav',
@@ -292,7 +264,7 @@ class DatasetCfgs:
         kwargs = {
             # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css.json',
             # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css_fix8spk.json',
-            'json_path': egs_dir / 'libri_css/data/jsons/sim_libri_css_early.json',
+            'json_path': json_dir / 'sim_libri_css_early.json',  #
             'observation': "['observation'][:1]",
             'num_speakers': 8,
         }
@@ -319,7 +291,8 @@ class DatasetCfgs:
         for k in list(datasets.keys()):
             datasets[f'{k}_ch'] = {
                 **datasets[k],
-                'json_path': egs_dir / 'libri_css/data/jsons/sim_libri_css_ch_speaker_reverberation_early_fix8spk.json',
+                # 'json_path': json_dir / 'sim_libri_css_ch_speaker_reverberation_early_fix8spk.json',
+                'json_path': json_dir / 'sim_libri_css_ch_early.json',  # single channel, i.e., split the channels to have 7 times more
                 # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css_ch_speaker_reverberation_early_fix8spk.json',
                 # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css_ch.json',
             }
@@ -371,21 +344,24 @@ class DatasetCfgs:
         """
         datasets = {}
         kwargs = {
+            'factory': PBJsonDSMeta,
             # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/libriCSS_raw_compressed.json',
-            'json_path': egs_dir / 'libri_css/data/jsons/libriCSS_raw_chfiles.json',
-            'observation': '["observation"][:1]',
+            'json_path': json_dir / 'libriCSS_raw_chfiles.json',  # observation is split into multiple files, one per microphone
+            # 'observation': '["observation"][:1]',
+            'observation': '["observation"]',
+            'dataset_name': ['0S', '0L', 'OV10', 'OV20', 'OV30', 'OV40'],
             'num_speakers': 8,
         }
         datasets['libri_css'] = {
-            'factory': PBJsonDSMeta,
-            'dataset_name': ['0S', '0L', 'OV10', 'OV20', 'OV30', 'OV40'],
+            **kwargs,
+        }
+        datasets['libri_css_ch0'] = {
+            'observation': '["observation"][:1]',
             **kwargs,
         }
         datasets['libri_css_ch'] = {
-            'factory': PBJsonDSMeta,
-            'dataset_name': ['0S', '0L', 'OV10', 'OV20', 'OV30', 'OV40'],
             **kwargs,
-            'json_path': egs_dir / 'libri_css/data/jsons/libriCSS_raw_compressed_ch.json',
+            'json_path': json_dir / 'libriCSS_raw_chfiles_ch.json',
             # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/libriCSS_raw_compressed_ch.json',
         }
 
@@ -509,36 +485,26 @@ class DatasetCfgs:
 class Reader(pt.Configurable):
     """
     >>> reader = Reader.new()
-    >>> for k in reader.datasets.keys(): print(k)
-    SimLibriCSS-train-960_000
-    SimLibriCSS-dev-2_400_000
+    >>> for k in reader.datasets.keys(): print(k)  # only the used dataset will be in the config to avoid pollution
+    SimLibriCSS-train-960_000_ch
+    SimLibriCSS-dev-2_400_000_ch
+    libri_css_ch
     SimLibriCSS-dev
-    SimLibriCSS-eval
-    libri_css
-    c7_train_chime6_480_000
-    c7_dev_chime6_2_400_000
-    c7_dev_chime6
-    c7_dev_dipco
-    c7_dev_mixer6
-    c7_eval_chime6
-    c7_eval_dipco
-    c7_eval_mixer6
-    librispeech_train_960
-    librispeech_dev_clean
-    librispeech_eval_clean
-    >>> pb.utils.pretty.pprint(Reader.get_config())
-    {'factory': 'reader_v2.Reader',
-     'datasets': {'SimLibriCSS-train-960_000': {'factory': 'reader_v2.SegmentPBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css.json',
+    >>> len(reader.all_dataset_cfgs())  # all datasets can be vied by this method
+    21
+    >>> pb.utils.pretty.pprint(Reader.get_config())  # doctest: +ELLIPSIS
+    {'factory': 'tssep_data.data.reader_v2.Reader',
+     'datasets': {'SimLibriCSS-train-960_000_ch': {'factory': 'tssep_data.data.reader_v2.SegmentPBJsonDSMeta',
+       'json_path': '.../jsons/sim_libri_css_ch_early.json',
        'dataset_name': 'SimLibriCSS-train',
        'num_speakers': 8,
        'sample_rate': 16000,
        'observation': "['observation'][:1]",
        'segment_num_samples': 960000,
        'minimum_segment_num_samples': None,
-       'mixup': None},
-      'SimLibriCSS-dev-2_400_000': {'factory': 'reader_v2.SegmentPBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css.json',
+       'mixup': 0.5},
+      'SimLibriCSS-dev-2_400_000_ch': {'factory': 'tssep_data.data.reader_v2.SegmentPBJsonDSMeta',
+       'json_path': '.../jsons/sim_libri_css_ch_early.json',
        'dataset_name': 'SimLibriCSS-dev',
        'num_speakers': 8,
        'sample_rate': 16000,
@@ -546,96 +512,34 @@ class Reader(pt.Configurable):
        'segment_num_samples': 2400000,
        'minimum_segment_num_samples': 0,
        'mixup': None},
-      'SimLibriCSS-dev': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css.json',
-       'dataset_name': 'SimLibriCSS-dev',
-       'num_speakers': 8,
-       'sample_rate': 16000,
-       'observation': "['observation'][:1]"},
-      'SimLibriCSS-eval': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css.json',
-       'dataset_name': 'SimLibriCSS-eval',
-       'num_speakers': 8,
-       'sample_rate': 16000,
-       'observation': "['observation'][:1]"},
-      'libri_css': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/libriCSS_raw_compressed.json',
+      'libri_css_ch': {'factory': 'tssep_data.data.reader_v2.PBJsonDSMeta',
+       'json_path': '.../jsons/libriCSS_raw_compressed_ch.json',
        'dataset_name': ['0S', '0L', 'OV10', 'OV20', 'OV30', 'OV40'],
        'num_speakers': 8,
        'sample_rate': 16000,
-       'observation': "['observation'][:1]"},
-      'c7_train_chime6_480_000': {'factory': 'reader_v2.SegmentPBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/chime7/data/chime7_v2_ch.json',
-       'dataset_name': 'train_chime6',
-       'num_speakers': 4,
+       'observation': '["observation"][:1]'},
+      'SimLibriCSS-dev': {'factory': 'tssep_data.data.reader_v2.PBJsonDSMeta',
+       'json_path': '.../jsons/sim_libri_css_early.json',
+       'dataset_name': 'SimLibriCSS-dev',
+       'num_speakers': 8,
        'sample_rate': 16000,
-       'observation': "['observation'][:1]",
-       'segment_num_samples': 480000,
-       'minimum_segment_num_samples': None,
-       'mixup': None},
-      'c7_dev_chime6_2_400_000': {'factory': 'reader_v2.SegmentPBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/chime7/data/chime7_v2_ch.json',
-       'dataset_name': 'dev_chime6',
-       'num_speakers': 4,
-       'sample_rate': 16000,
-       'observation': "['observation'][:1]",
-       'segment_num_samples': 2400000,
-       'minimum_segment_num_samples': None,
-       'mixup': None},
-      'c7_dev_chime6': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/chime7/data/chime7_v2_ch.json',
-       'dataset_name': 'dev_chime6',
-       'num_speakers': 4,
-       'sample_rate': 16000,
-       'observation': "['observation'][:1]"},
-      'c7_dev_dipco': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/chime7/data/chime7_v2_ch.json',
-       'dataset_name': 'dev_dipco',
-       'num_speakers': 4,
-       'sample_rate': 16000,
-       'observation': "['observation'][:1]"},
-      'c7_dev_mixer6': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/chime7/data/chime7_v2_ch.json',
-       'dataset_name': 'dev_mixer6',
-       'num_speakers': 4,
-       'sample_rate': 16000,
-       'observation': "['observation'][:1]"},
-      'c7_eval_chime6': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/chime7/data/chime7_v2_ch.json',
-       'dataset_name': 'eval_chime6',
-       'num_speakers': 4,
-       'sample_rate': 16000,
-       'observation': "['observation'][:1]"},
-      'c7_eval_dipco': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/chime7/data/chime7_v2_ch.json',
-       'dataset_name': 'eval_dipco',
-       'num_speakers': 4,
-       'sample_rate': 16000,
-       'observation': "['observation'][:1]"},
-      'c7_eval_mixer6': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/chime7/data/chime7_v2_ch.json',
-       'dataset_name': 'eval_mixer6',
-       'num_speakers': 4,
-       'sample_rate': 16000,
-       'observation': "['observation'][:1]"},
-      'librispeech_train_960': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/librispeech.json',
-       'dataset_name': 'train_960',
-       'num_speakers': 1,
-       'sample_rate': 16000,
-       'observation': "['observation']"},
-      'librispeech_dev_clean': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/librispeech.json',
-       'dataset_name': 'dev_clean',
-       'num_speakers': 1,
-       'sample_rate': 16000,
-       'observation': "['observation']"},
-      'librispeech_eval_clean': {'factory': 'reader_v2.PBJsonDSMeta',
-       'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/librispeech.json',
-       'dataset_name': 'eval_clean',
-       'num_speakers': 1,
-       'sample_rate': 16000,
-       'observation': "['observation']"}}}
+       'observation': "['observation'][:1]"}},
+     'train_dataset_name': 'SimLibriCSS-train-960_000_ch',
+     'validate_dataset_name': 'SimLibriCSS-dev-2_400_000_ch',
+     'domain_adaptation_src_dataset_name': 'SimLibriCSS-dev',
+     'eval_dataset_name': ['libri_css_ch'],
+     'data_hooks': {'factory': 'tssep_data.data.data_hooks.Sequential',
+      'tasks': {'factory': 'dict',
+       'auxInput': {'factory': 'tssep_data.data.data_hooks.SpeakerEmbeddings',
+        'json': ['/home/cbj/python/tssep_data/egs'],
+        'output_size': 100,
+        'estimate': {'factory': 'dict',
+         '0L': True,
+         '0S': True,
+         'OV10': True,
+         'OV20': True,
+         'OV30': True,
+         'OV40': True}}}}}
 
     """
     datasets: dict
@@ -695,7 +599,7 @@ class Reader(pt.Configurable):
             self.data_hooks = data_hooks.Sequential(self.data_hooks)
 
     @staticmethod
-    def all_datasets():
+    def all_dataset_cfgs():
         return pb.utils.mapping.Dispatcher({
             **DatasetCfgs.sim_libri_css(),
             **DatasetCfgs.libri_css(),
@@ -705,16 +609,33 @@ class Reader(pt.Configurable):
 
     @classmethod
     def finalize_dogmatic_config(cls, config):
-        if 'datasets' not in config or len(config['datasets'].keys()) <= 1:
-            all_datasets = cls.all_datasets()
-            def as_list(x):
-                return [x] if isinstance(x, str) else x
+        def as_list(x):
+            return [x] if isinstance(x, str) else x
 
-            config['datasets'] = {
-                dataset_name: all_datasets[dataset_name]
-                for name in ['train_dataset_name', 'validate_dataset_name', 'eval_dataset_name', 'domain_adaptation_src_dataset_name']
-                for dataset_name in as_list(config[name])
-            }
+        # if 'datasets' not in config or len(config['datasets'].keys()) <= 1:
+        #     all_datasets = cls.all_datasets()
+        #     config['datasets'] = {
+        #         dataset_name: all_datasets[dataset_name]
+        #         for name in ['train_dataset_name', 'validate_dataset_name', 'eval_dataset_name', 'domain_adaptation_src_dataset_name']
+        #         for dataset_name in as_list(config[name])
+        #     }
+
+        all_datasets = cls.all_dataset_cfgs()
+        if 'datasets' not in config:
+            config['datasets'] = {}
+
+        for name in [
+                'train_dataset_name', 'validate_dataset_name',
+                'eval_dataset_name', 'domain_adaptation_src_dataset_name',
+        ]:
+            if name in config:
+                for dataset_name in as_list(config[name]):
+                    if (
+                            dataset_name not in config['datasets']  # missing
+                            or not config['datasets'][dataset_name]  # or empty
+                    ):
+                        config['datasets'][dataset_name] = all_datasets[dataset_name]
+
         # /scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/libriCSS_raw_compressed.json
         # /scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css.json
         return config
@@ -758,15 +679,15 @@ class Reader(pt.Configurable):
         return ds
 
 
-@dataclasses.dataclass
-class Reader8spk(pt.Configurable):
-
-    @classmethod
-    def finalize_dogmatic_config(cls, config):
-        if 'datasets' not in config or len(config['datasets'].keys()) <= 1:
-            config['datasets'] = {
-                **DatasetCfgs.sim_libri_css(),
-                **DatasetCfgs.libri_css(),
-                **DatasetCfgs.librispeech(),
-            }
-        return config
+# @dataclasses.dataclass
+# class Reader8spk(pt.Configurable):
+#
+#     @classmethod
+#     def finalize_dogmatic_config(cls, config):
+#         if 'datasets' not in config or len(config['datasets'].keys()) <= 1:
+#             config['datasets'] = {
+#                 **DatasetCfgs.sim_libri_css(),
+#                 **DatasetCfgs.libri_css(),
+#                 **DatasetCfgs.librispeech(),
+#             }
+#         return config
