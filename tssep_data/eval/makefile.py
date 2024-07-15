@@ -5,10 +5,12 @@ from pathlib import Path
 import padertorch as pt
 from padertorch.contrib.cb.io import SimpleMakefile
 import tssep
+import tssep_data
+from tssep_data.data.constants import eg_dir
 
-from tssep.util.slurm import SlurmResources
-from tssep.util.slurm import cmd_to_hpc, bash_wrap
-
+from tssep_data.util.slurm import SlurmResources
+from tssep_data.util.slurm import cmd_to_hpc, bash_wrap
+import typing
 
 def get_eval_id(eg, eeg):
     storage_dir = Path(eg['trainer']['storage_dir'])
@@ -16,10 +18,40 @@ def get_eval_id(eg, eeg):
     return f"{storage_dir.name}_{eval_dir.parent.name.replace('ckpt_', '')}_{eval_dir.name}"
 
 
+class PyPath:
+    """
+    Similar to pathlib.Path but for python paths,
+    e.g. 'tssep_data.eval.makefile' instead of 'tssep_data/eval/makefile.py'
+
+    Supports:
+    - path.parent
+    - path / 'child'
+
+    """
+    def __init__(self, path):
+        self.path = path
+
+    def __str__(self):
+        return f'{self.path}'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({self.path!r})'
+
+    @property
+    def parent(self):
+        assert '.' in self.path, self.path
+        return PyPath('.'.join(self.path.split('.')[:-1]))
+
+    def __truediv__(self, other) -> 'PyPath':
+        assert isinstance(other, str), other
+        return PyPath(f'{self.path}.{other}')
+
+
 def makefile(_config, eg, eeg, eval_slurm_resources, asr_slurm_resources):
 
     storage_dir = Path(eg['trainer']['storage_dir'])
     eval_dir = Path(eeg['eval_dir'])
+    main_python_path = PyPath(pt.configurable.resolve_main_python_path())
 
     _config = pt.configurable.recursive_class_to_str(_config)
 
@@ -34,17 +66,17 @@ def makefile(_config, eg, eeg, eval_slurm_resources, asr_slurm_resources):
     m = SimpleMakefile()
     m += 'SHELL := /bin/bash'
     m.phony['help'] = 'cat Makefile'
-    m.phony['run'] = 'python -m tssep.eval.run with config.yaml'
-    m.phony['run_pdb'] = 'python -m tssep.eval.run --pdb with config.yaml'
-    # m.phony['sbatch'] = 'python -m tssep.eval.run sbatch with config.yaml'
+    m.phony['run'] = f'python -m {main_python_path} with config.yaml'
+    m.phony['run_pdb'] = f'python -m {main_python_path} --pdb with config.yaml'
+    # m.phony['sbatch'] = '{main_python_path} sbatch with config.yaml'
     m.phony['sbatch'] = cmd_to_hpc(
         'make run', shell=True, block=False, **dataclasses.asdict(slurm))
-    m.phony['srun_debug'] = 'python -m tssep.eval.run srun_debug with config.yaml'
+    m.phony['srun_debug'] = f'python -m {main_python_path} srun_debug with config.yaml'
 
     # Diff commands only work for train:
-    m.phony['meld'] = 'python -m tssep.eval.run meld with config.yaml'
+    m.phony['meld'] = f'python -m {main_python_path} meld with config.yaml'
     # m.phony['meld_breaking_change'] = 'python -m css.egs.extract.run meld with eg.trainer.storage_dir=.'  # Fix a breaking change
-    m.phony['diff'] = 'python -m tssep.eval.run diff with config.yaml'
+    m.phony['diff'] = f'python -m {main_python_path} diff with config.yaml'
 
     # m.phony['der'] = [
     #     'python -m css.egs.extract.find_optimal_der .',
@@ -61,11 +93,11 @@ def makefile(_config, eg, eeg, eval_slurm_resources, asr_slurm_resources):
     # ]
 
     # tmp = '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/libriCSS_raw_compressed.json'
-    tmp = tssep.git_root / 'egs/libri_css/data/jsons/libriCSS_raw_chfiles.json'
+    tmp = eg_dir / 'data/jsons/libriCSS_raw_chfiles.json'
     m.phony['gss'] = [
-        'python -m tssep.eval.c7_frame_to_second c7.json',
+        f'python -m {main_python_path.parent / "c7_frame_to_second"} c7.json',
         cmd_to_hpc(
-            f"python -m tssep.eval.gss_v2 c7_fix.json {tmp} --out_folder=gss --channel_slice=:",
+            f"python -m {main_python_path.parent / 'gss_v2'} c7_fix.json {tmp} --out_folder=gss --channel_slice=:",
             job_name=f'{eval_id}_gss_v2',
             block=False,
             shell=True,
@@ -78,39 +110,38 @@ def makefile(_config, eg, eeg, eval_slurm_resources, asr_slurm_resources):
         # f"'srun python -m tssep.eval.gss_v2 ../c7.json {tmp} --out_folder=. --channel_slice=:",
     ]
     m.phony['gss_makefile'] = [
-        'python -m fire tssep.eval.makefile gss_makefile gss',
+        f'python -m fire {main_python_path.parent / "makefile"} gss_makefile gss',
     ]
 
-    ref = tssep.git_root / 'egs/libri_css/data/libri_css_ref.stm'
+    ref = eg_dir / 'data/libri_css_ref.stm'
     m['asr/ref.stm'] = [
         'mkdir -p asr',
         f'ln -s {ref} asr/ref.stm',
     ]
-    m['asr/hyp.stm'] = [
+    m['asr/hyp.json'] = [
         'mkdir -p asr',
-        f'python -m tssep.eval.c7_frame_to_second c7.json --out=asr/hyp.json',
+        f'python -m {main_python_path.parent / "c7_frame_to_second"} c7.json --out=asr/hyp.json',
     ]
 
     m.phony['transcribe_tiny.en'] = [
         'mkdir -p asr',
-        f'make asr/ref.stm asr/hyp.stm',
-        'python -m tssep.eval.transcribe launch asr/hyp.json',
+        f'make asr/ref.stm asr/hyp.json',
+        f'python -m {main_python_path.parent / "transcribe"} launch asr/hyp.json',
         f"meeteval-wer cpwer --normalize='lower,rm(.?!,)' -r asr/ref.stm -h asr/hyp_whisper_tiny.en.json",
         f'cat asr/hyp_whisper_tiny.en_cpwer.json'
     ]
 
     m.phony['transcribe_large-v2'] = [
         f'mkdir -p asr',
-        f'make asr/ref.stm asr/hyp.stm',
-        f'python -m tssep.eval.transcribe launch asr/hyp.json --model_name="large-v2"',
+        f'make asr/ref.stm asr/hyp.json',
+        f'python -m {main_python_path.parent / "transcribe"} launch asr/hyp.json --model_name="large-v2"',
         f"meeteval-wer cpwer --normalize='lower,rm(.?!,)' -r asr/ref.stm -h asr/hyp_whisper_large-v2.json",
         f'cat asr/hyp_whisper_large-v2_cpwer.json'
     ]
 
     m.phony['transcribe_nemo'] = [
         f'mkdir -p asr',
-        f'python -m tssep.eval.c7_frame_to_second c7.json --out=asr/hyp.json',
-        f'make asr/ref.stm',
+        f'make asr/ref.stm asr/hyp.json',
         cmd_to_hpc(
             f'python -m cbj.transcribe.cli chime7 asr/hyp.json --model_tag=nemo --key=audio_path',
             mem='3G', time='1h', mpi='20',
@@ -234,7 +265,7 @@ def makefile(_config, eg, eeg, eval_slurm_resources, asr_slurm_resources):
         'rm -rf audio sad embedding md-eval.pl_*.txt details.json summary.yaml',
     ]
 
-    m.phony['makefile'] = 'python -m tssep.eval.run makefile with config.yaml'
+    m.phony['makefile'] = f'python -m {main_python_path} makefile with config.yaml'
 
     m.dump(eval_dir / 'Makefile')
 
@@ -243,13 +274,14 @@ def gss_makefile(storage_dir='.'):
     m = SimpleMakefile()
     m += 'SHELL := /bin/bash'
     m.phony['help'] = 'cat Makefile'
+    main_python_path = PyPath(pt.configurable.resolve_main_python_path())
 
     storage_dir = Path(storage_dir).resolve()
-    parts = list(filter(lambda p: p not in ['eval'],storage_dir.parts[-4:]))
+    parts = list(filter(lambda p: p not in ['eval'], storage_dir.parts[-4:]))
     id_ = '_'.join(parts)
     add_asr_wer_to_makefile(m, id_, file='gss_c7.json')
 
-    m.phony['makefile'] = f'python -m fire tssep.eval.makefile gss_makefile .'
+    m.phony['makefile'] = f'python -m fire {main_python_path.parent / "makefile"} gss_makefile .'
 
     m.dump(storage_dir / 'Makefile')
 
@@ -262,6 +294,7 @@ def add_asr_wer_to_makefile(
     file = Path(file)
     assert file.suffix == '.json', file
     name = file.with_suffix('')
+    main_python_path = PyPath(pt.configurable.resolve_main_python_path())
 
     for model_tag, resources in [
         ('espnet', dict(mem='5G', time='6h', mpi='20')),  # Noctua1: (2700 / mpi) minutes
@@ -281,8 +314,8 @@ def add_asr_wer_to_makefile(
         ]
         ref = tssep.git_root / 'egs/libri_css/data/libri_css_ref.stm'
         m.phony[f'wer_{model_tag}: {name}_words_{model_tag}.json'] = [
-            f'python -m tssep.eval.c7_frame_to_second {name}_words_{model_tag}.json',
-            f'python -m tssep.eval.normalize_words {name}_words_{model_tag}_fix.json',
+            f'python -m {main_python_path.parent}.c7_frame_to_second {name}_words_{model_tag}.json',
+            f'python -m {main_python_path.parent}.normalize_words {name}_words_{model_tag}_fix.json',
             f'cat {name}_words_{model_tag}_fix.json | python -m meeteval.io.chime7 to_stm > {name}_words_{model_tag}_fix.stm',
             f'python -m meeteval.der md_eval_22 -r {ref} -h {name}_words_{model_tag}_fix.stm',
             f'meeteval-wer cpwer -r {ref} -h {name}_words_{model_tag}_fix.stm',
@@ -291,5 +324,5 @@ def add_asr_wer_to_makefile(
         ]
 
     m.phony['libricss_wer_tables'] = [
-        'python -m tssep.eval.libricss_wer_table *cpwer_per_reco.json --session=True'
+        f'python -m {main_python_path.parent}.libricss_wer_table *cpwer_per_reco.json --session=True'
     ]
