@@ -15,7 +15,7 @@ from tssep_data.util.bash import location
 
 @dataclasses.dataclass
 class SlurmResources:
-    cpus: int  # cpus per task/MPI process
+    cpus: int = 1 # cpus per task/MPI process
     mem: 'str | None' = None  # e.g. '25GB'  # mem per task/MPI process
     gpus: 'int | None' = 0  # gpus per job, --gpus-per-task is for gpus per task/MPI process
     gputype: str = None
@@ -266,6 +266,62 @@ class SlurmResources:
 
     def to_str(self):
         return ' '.join(self.to_list())
+
+    def to_sbatch_script(self, options=(), bash=()):
+        """
+
+        Args:
+            options:
+                list of additional options to add to the script header.
+            bash:
+                list of additional bash commands to add to the script header,
+                e.g., ['srun python -m tssep_data.train.run ...', ...]
+
+        Returns:
+
+        >>> print(SlurmResources(6, '4GB').to_sbatch_script())
+        #!/usr/bin/env bash
+        #SBATCH -N 1
+        #SBATCH -n 1
+        #SBATCH -c 6
+        #SBATCH --mem 4GB
+        #SBATCH -p cpu
+        >>> print(SlurmResources(6, '4GB').to_sbatch_script(['--job-name', 'test'], ['echo "Hello World"']))
+        #!/usr/bin/env bash
+        #SBATCH -N 1
+        #SBATCH -n 1
+        #SBATCH -c 6
+        #SBATCH --mem 4GB
+        #SBATCH -p cpu
+        #SBATCH --job-name test
+        <BLANKLINE>
+        echo "Hello World"
+        """
+        script = ['#!/usr/bin/env bash']
+
+        for l in [self.to_list(), options]:
+            i = 0
+            while i < len(l):
+                k = l[i]
+                assert k.startswith('-'), (k, i, l)
+                i += 1
+                if i >= len(l) or l[i].startswith('-'):
+                    script.append(f'#SBATCH {k}')
+                else:
+                    script.append(f'#SBATCH {k} {l[i]}')
+                    i += 1
+        if bash:
+            script += ['']  # add an empty line
+            script += bash
+        script += ['']  # add a newline at the end
+        return '\n'.join(script + [''])
+
+    def dump_sbatch_script(self, file, options=(), bash=()):
+        from tssep_data.io.backup import write_text_with_backup
+        write_text_with_backup(file,
+                               self.to_sbatch_script(options, bash),
+                               print_fn=print,
+                               backup=True)
 
     @property
     def sbatch_executable(self):
