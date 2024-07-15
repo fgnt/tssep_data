@@ -44,7 +44,8 @@ if typing.TYPE_CHECKING:
     # Cyclic import
     from tssep_data.data.reader_v2 import Reader
 
-from tssep_data.data.reader_v2 import egs_dir
+from tssep_data.data.constants import egs_dir, eg_dir
+
 
 @dataclasses.dataclass
 class ABC:
@@ -483,6 +484,15 @@ class FramewiseEmbeddings(_Template):
 class SpeakerEmbeddings(_Template):
     # json: 'str | list[str]' = '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/simLibriCSS_oracle_ivectors.json'
     json: 'str | list[str] | tuple[str]' = (
+        eg_dir / 'data/ivector/simLibriCSS_ch_oracle_ivectors.json',
+        # egs_dir / 'ivector/simLibriCSS_oracle_ivectors.json',
+        eg_dir / 'data/ivector/libriCSS_espnet_ivectors.json',
+        # egs_dir / 'ivector/libriCSS_oracle_ivectors.json',
+        # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/simLibriCSS_oracle_ivectors.json',
+        # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/libriCSS_espnet_ivectors.json',
+        # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/3/sim_libri_css_ch_8spk_oracle_dvectors.json',
+        # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/4/libri_css_ch_8spk_ch0_oracle_dvectors.json',
+        # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/5/libri_css_ch_8spk_ch_oracle_dvectors.json',
         # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/3/sim_libri_css_ch_8spk_oracle_dvectors.json',
     )
     output_size: int = 100
@@ -728,9 +738,12 @@ class VAD(ABC):
     files: 'dict[str, str]' = dataclasses.field(default_factory=functools.partial(
         dict,
         **{
-            'SimLibriCSS-train': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css/target_vad/1/SimLibriCSS-train.pkl',
-            'SimLibriCSS-dev': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css/target_vad/1/SimLibriCSS-dev.pkl',
-            'SimLibriCSS-test': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css/target_vad/1/SimLibriCSS-test.pkl',
+            'SimLibriCSS-train': egs_dir / 'libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-train.pkl',
+            'SimLibriCSS-dev': egs_dir / 'libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-dev.pkl',
+            'SimLibriCSS-test': egs_dir / 'libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-test.pkl',
+            # 'SimLibriCSS-train': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css/target_vad/1/SimLibriCSS-train.pkl',
+            # 'SimLibriCSS-dev': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css/target_vad/1/SimLibriCSS-dev.pkl',
+            # 'SimLibriCSS-test': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css/target_vad/1/SimLibriCSS-test.pkl',
         },
     ))
 
@@ -751,10 +764,18 @@ class VAD(ABC):
         # SegmentPBJsonDSMeta takes care of cutting the vad and doing mixup.
 
         if load and 'vad' in load_keys:
-        # start, end = ex['start'], ex['end']
-            ex.setdefault('audio_data', {})['vad'] = self.get_ds(
-                reader, ex['dataset']
-            )[ex['example_id']]
+            # start, end = ex['start'], ex['end']
+            ds = self.get_ds(reader, ex['dataset'])
+            try:
+                ex.setdefault('audio_data', {})['vad'] = ds[ex['example_id']]
+            except KeyError:
+                # Storing the vad for all channels in the memory is too much.
+                # Therefore, we use only one vad for all channels.
+                if ex['example_id'][-4:-1] == '_ch':
+                    ex.setdefault('audio_data', {})['vad'] = ds[ex['example_id'][:-4]]
+                else:
+                    raise
+
         # if ex['mixup']:
         #     tmp = ex['audio_data']['vad'].shape[-1] // 2
         #     ex['audio_data']['vad'] = (
@@ -772,14 +793,20 @@ class Sequential(ABC):
             dict,
             auxInput={
                 'factory': SpeakerEmbeddings,
-                'json': [
-                    egs_dir / '',
-                    # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/simLibriCSS_oracle_ivectors.json',
-                    # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/libriCSS_espnet_ivectors.json',
-                    # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/3/sim_libri_css_ch_8spk_oracle_dvectors.json',
-                    # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/4/libri_css_ch_8spk_ch0_oracle_dvectors.json',
-                    # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/5/libri_css_ch_8spk_ch_oracle_dvectors.json',
-                ]
+                # 'json': [
+                #     eg_dir / 'data/ivector/simLibriCSS_ch_oracle_ivectors.json',
+                #     # egs_dir / 'ivector/simLibriCSS_oracle_ivectors.json',
+                #     eg_dir / 'data/ivector/libriCSS_espnet_ivectors.json',
+                #     # egs_dir / 'ivector/libriCSS_oracle_ivectors.json',
+                #     # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/simLibriCSS_oracle_ivectors.json',
+                #     # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/libriCSS_espnet_ivectors.json',
+                #     # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/3/sim_libri_css_ch_8spk_oracle_dvectors.json',
+                #     # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/4/libri_css_ch_8spk_ch0_oracle_dvectors.json',
+                #     # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/5/libri_css_ch_8spk_ch_oracle_dvectors.json',
+                # ]
+            },
+            vad={
+                'factory': VAD,
             },
             # auxInput2={
             #     'factory': 'tssep.data.data_hooks.SecondSpeakerEmbeddings',
