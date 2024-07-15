@@ -1,0 +1,16 @@
+eg:
+  factory: tssep.train.experiment.Experiment
+  trainer:
+    # storage_dir: .../tsvad  # Should be an absolute path, hence not set here
+    model:
+      mask_estimator:
+        output_resolution: t
+      loss:
+        factory: tssep.train.loss.VADSigmoidBCE
+        target: Vad  # STFT domain target VAD
+        pit: false  # No permutation ambiguity
+        magnitude_threshold: 0.05
+    # 224 / train_batchsize, e.g. 56 for 48 GB GPU MEM, more for smaller GPUs
+    virtual_minibatch_size: 5
+  # 224 / virtual_minibatch_size, e.g. 4 for 48 GB GPU MEM, less for smaller GPUs
+  train_batchsize: 3

@@ -1,0 +1,22 @@
+eg:
+  factory: tssep.train.experiment.Experiment
+  trainer:
+    # storage_dir: .../tsvad  # Should be an absolute path, hence not set here
+    model:
+      mask_estimator:
+        output_resolution: tf
+      loss:
+        factory: tssep.train.loss.LogMAE
+        target: speaker_reverberation_early_ch0
+    # 224 / train_batchsize, e.g. 56 for 48 GB GPU MEM, more for smaller GPUs
+    virtual_minibatch_size: 5
+  # 224 / virtual_minibatch_size, e.g. 4 for 48 GB GPU MEM, less for smaller GPUs
+  train_batchsize: 3
+  init_ckpt:  # Use an init checkpoint from the VAD model
+    factory: tssep.train.init_ckpt.InitCheckPointVAD2Sep
+    # init_ckpt: .../tsvad/checkpoints/ckpt_4.pth  # Should be an absolute path, hence not set here
+    strict: true
+    bcast:
+    - mask_estimator.post_net.linear2.weight
+    - mask_estimator.post_net.linear2.bias
+    mode: repeat
