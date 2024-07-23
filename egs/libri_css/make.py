@@ -14,7 +14,7 @@ from pathlib import Path
 import paderbox as pb
 
 from tssep_data.util.slurm import cmd_to_hpc
-from tssep_data.util.cmd_runner import touch, CLICommands, confirm, run, Green, Color_Off, Red, maybe_execute, env_check, user_select, add_stage_cmd
+from tssep_data.util.cmd_runner import touch, CLICommands, confirm, run, c, maybe_execute, env_check, user_select, add_stage_cmd
 
 
 clicommands = CLICommands()
@@ -43,7 +43,12 @@ def launch_training(
     if (storage_dir / 'checkpoints').exists():
         q += ' (restart/continue)'
 
-    match sel := user_select(q, ['slurm', 'local'], ['slurm', 'local'][shutil.which('sbatch') is None]):
+    if shutil.which('sbatch') is None:
+        sel = 'local'
+        print(f'{c.yellow}No sbatch command found. Running locally.{c.end}')
+    else:
+        sel = user_select(q, ['slurm', 'local'], 'slurm')
+    match sel:
         case 'slurm':
             run(
                 f'{sys.executable} -m tssep_data.train.run sbatch with config.yaml',
@@ -63,8 +68,6 @@ def launch_training(
 @clicommands
 def tsvad():
     cwd = Path.cwd()
-    VAD_STORAGE_DIR = cwd / 'tsvad'
-    # VAD_TARGET_DIR = cwd / 'data/jsons/sim_libri_css_early/target_vad/v2'
 
     launch_training(
         VAD_STORAGE_DIR,
@@ -75,12 +78,6 @@ def tsvad():
             f'{cwd}/cfg/common.yaml',
             f'{cwd}/cfg/tsvad.yaml',
             f'eg.trainer.storage_dir={VAD_STORAGE_DIR}',
-            # f'eg.trainer.model.aux_data.db.json_path={cwd}/data/ivector/simLibriCSS_oracle_ivectors.json',
-            # f'eg.trainer.model.reader.db.json_path={cwd}/data/jsons/sim_libri_css.json',
-            # f'eg.trainer.model.reader.db_librispeech.json_path={cwd}/data/jsons/librispeech.json',
-            # f'eg.trainer.model.reader.vad.files.SimLibriCSS-train={VAD_TARGET_DIR}/SimLibriCSS-train.pkl',
-            # f'eg.trainer.model.reader.vad.files.SimLibriCSS-dev={VAD_TARGET_DIR}/SimLibriCSS-dev.pkl',
-            # f'eg.trainer.model.reader.vad.files.SimLibriCSS-test={VAD_TARGET_DIR}/SimLibriCSS-test.pkl',
             f'eg.trainer.stop_trigger=[100000,"iteration"]',
         ])
     )
@@ -112,7 +109,7 @@ def get_checkpoint(storage_dir):
     cwd = Path.cwd()
     checkpoint = user_select(
         'Which checkpoint should be used for TS-SEP as initialization?',
-        {f'{os.path.relpath(c, cwd)} ({decimal.Decimal(f"{ckpt_ranking[c.name]:.2g}")})': c for c in checkpoints},
+        {f'{os.path.relpath(c, cwd)} (loss: {decimal.Decimal(f"{ckpt_ranking[c.name]:.2g}")})': c for c in checkpoints},
     )
     assert checkpoint, checkpoint
     return checkpoint
@@ -121,18 +118,15 @@ def get_checkpoint(storage_dir):
 @clicommands
 def tssep():
     cwd = Path.cwd()
-    VAD_STORAGE_DIR = cwd / 'tsvad'
-    SEP_STORAGE_DIR = cwd / 'tssep'
 
     def init_fn():
         checkpoint = get_checkpoint(VAD_STORAGE_DIR)
         run([
-            sys.executable, '-m', 'tssep.train.run', 'init', 'with',
+            sys.executable, '-m', 'tssep_data.train.run', 'init', 'with',
             f'{cwd}/cfg/common.yaml',
             f'{cwd}/cfg/tssep.yaml',
             f'eg.trainer.storage_dir={SEP_STORAGE_DIR}',
             f'eg.trainer.stop_trigger=[100000,"iteration"]',
-            # f'eg.init_ckpt.factory=tssep.train.init_ckpt.InitCheckPointVAD2Sep',
             f'eg.init_ckpt.init_ckpt={checkpoint}',
         ])
 
@@ -159,9 +153,8 @@ def espnet_gss():
 
     run(f'{sys.executable} -m meeteval.io.chime7 from_rttm {eval} > {STORAGE_DIR / "c7_dev.json"}')
 
-    # /scratch/hpc-prf-nt1/cbj/deploy/css/egs/libri_css/data/jsons/libriCSS_raw_chfiles.json
     run(cmd_to_hpc(
-        f"{sys.executable} -m tssep.eval.gss_v2 c7.json {cwd}/data/jsons/libriCSS_raw_chfiles.json --out_folder=gss --channel_slice=: && python -m fire tssep.eval.makefile gss_makefile gss",
+        f"{sys.executable} -m tssep_data.eval.gss_v2 c7.json {cwd}/data/jsons/libriCSS_raw_chfiles.json --out_folder=gss --channel_slice=: && python -m fire tssep_data.eval.makefile gss_makefile gss",
         job_name=f'espnet_gss_v2',
         block=False,
         shell=True,
@@ -204,11 +197,15 @@ def _create_makefile():
 
 
 if __name__ == '__main__':
-    pwd = Path(__file__).parent
-    if pwd != Path.cwd():
-        print(f'WARNING: This script ({__file__}) should be executed in the parent folder.')
-        print(f'WARNING: Changing directory to {pwd}.')
-        os.chdir(pwd)
+    cwd = Path.cwd()
+    VAD_STORAGE_DIR = Path(os.environ.get('VAD_STORAGE_DIR', cwd / 'tsvad')).absolute()
+    SEP_STORAGE_DIR = Path(os.environ.get('SEP_STORAGE_DIR', cwd / 'tssep')).absolute()
+
+    file_parent = Path(__file__).parent
+    if file_parent != cwd:
+        print(f'WARNING: This script ({__file__}) should be executed in its folder.')
+        print(f'WARNING: Changing directory to {file_parent}.')
+        os.chdir(file_parent)
 
     import fire
     env_check()
