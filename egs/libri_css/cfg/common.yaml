@@ -10,8 +10,8 @@ eg:
         factory: tssep_data.data.reader_v2.Reader
 #        datasets:  #
       fe:
-        size: 512
-        shift: 128
+        size: 1024
+        shift: 256
         factory: tssep.train.feature_extractor.ConcaternatedSTFTFeatures
         fe1:
           factory: tssep.train.feature_extractor.TorchMFCC
