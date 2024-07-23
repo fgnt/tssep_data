@@ -264,7 +264,7 @@ class DatasetCfgs:
         kwargs = {
             # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css.json',
             # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css_fix8spk.json',
-            'json_path': json_dir / 'sim_libri_css_early.json',  #
+            'json_path': '{egs_dir}/libri_css/data/jsons/sim_libri_css_early.json',  #
             'observation': "['observation'][:1]",
             'num_speakers': 8,
         }
@@ -292,7 +292,7 @@ class DatasetCfgs:
             datasets[f'{k}_ch'] = {
                 **datasets[k],
                 # 'json_path': json_dir / 'sim_libri_css_ch_speaker_reverberation_early_fix8spk.json',
-                'json_path': json_dir / 'sim_libri_css_ch_early.json',  # single channel, i.e., split the channels to have 7 times more
+                'json_path': '{egs_dir}/libri_css/data/jsons/sim_libri_css_ch_early.json',  # single channel, i.e., split the channels to have 7 times more
                 # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css_ch_speaker_reverberation_early_fix8spk.json',
                 # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css_ch.json',
             }
@@ -301,7 +301,7 @@ class DatasetCfgs:
     @staticmethod
     def libri_css():
         """
-        >>> reader = Reader.new()
+        >>> reader = Reader.new(updates=dict(datasets=Reader.all_dataset_cfgs()))
         >>> dsmeta = reader.datasets['libri_css']
         >>> dsmeta
         PBJsonDSMeta(json_path='/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/libriCSS_raw_compressed.json', dataset_name=['0S', '0L', 'OV10', 'OV20', 'OV30', 'OV40'], num_speakers=8, sample_rate=16000, observation="['observation'][:1]")
@@ -346,7 +346,7 @@ class DatasetCfgs:
         kwargs = {
             'factory': PBJsonDSMeta,
             # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/libriCSS_raw_compressed.json',
-            'json_path': json_dir / 'libriCSS_raw_chfiles.json',  # observation is split into multiple files, one per microphone
+            'json_path': '{egs_dir}/libri_css/data/jsons/libriCSS_raw_chfiles.json',  # observation is split into multiple files, one per microphone
             # 'observation': '["observation"][:1]',
             'observation': '["observation"]',
             'dataset_name': ['0S', '0L', 'OV10', 'OV20', 'OV30', 'OV40'],
@@ -361,7 +361,7 @@ class DatasetCfgs:
         }
         datasets['libri_css_ch'] = {
             **kwargs,
-            'json_path': json_dir / 'libriCSS_raw_chfiles_ch.json',
+            'json_path': '{egs_dir}/libri_css/data/jsons/libriCSS_raw_chfiles_ch.json',
             # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/libriCSS_raw_compressed_ch.json',
         }
 
@@ -370,7 +370,7 @@ class DatasetCfgs:
     @staticmethod
     def chime7():
         """
-        >>> reader = Reader.new()
+        >>> reader = Reader.new(updates=dict(datasets=Reader.all_dataset_cfgs()))
         >>> dsmeta = reader.datasets['c7_dev_chime6']
         >>> dsmeta
         PBJsonDSMeta(json_path='/scratch/hpc-prf-nt2/cbj/deploy/css/egs/chime7/data/chime7_v2_ch.json', dataset_name='dev_chime6', num_speakers=4, sample_rate=16000, observation="['observation'][:1]")
@@ -441,16 +441,17 @@ class DatasetCfgs:
     @staticmethod
     def librispeech():
         """
-        >>> reader = Reader.new()
+        >>> reader = Reader.new(updates=dict(datasets=Reader.all_dataset_cfgs()))
         >>> dsmeta = reader.datasets['librispeech_dev_clean']
         >>> dsmeta
-        PBJsonDSMeta(json_path='/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/librispeech.json', dataset_name='dev_clean', num_speakers=1, sample_rate=16000, observation="['observation']")
+        PBJsonDSMeta(json_path='{egs_dir}/libri_css/data/jsons/librispeech.json', dataset_name='dev_clean', num_speakers=1, sample_rate=16000, observation="['observation']")
         >>> ds = reader.__call__('librispeech_dev_clean')
         >>> ds
-              DictDataset(name='dev_clean', len=2703)
-            MapDataset(_pickle.loads)
-          SliceDataset([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, ...])
-        MapDataset(functools.partial(<bound method PBJsonDSMeta.load_audio of PBJsonDSMeta(json_path='/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/librispeech.json', dataset_name='dev_clean', num_speakers=1, sample_rate=16000, observation="['observation']")>, load_keys=['observation']))
+                DictDataset(name='dev_clean', len=2703)
+              MapDataset(_pickle.loads)
+            SliceDataset([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, ...])
+          MapDataset(<bound method PBJsonDSMeta.add_uem of PBJsonDSMeta(...)>)
+        MapDataset(functools.partial(<bound method Reader.prepare of Reader(...))
         >>> print(pb.utils.pretty.pretty(ds[0], max_seq_length=[20, 2, 1]))
         {'audio_path': {'observation': '/scratch/hpc-prf-nt2/fgnt/net/db/LibriSpeech/dev-clean/1272/128104/1272-128104-0000.flac'},
          'chapter_id': '128104',
@@ -465,8 +466,8 @@ class DatasetCfgs:
         """
         datasets = {}
         kwargs = {
-            # 'json_path': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/librispeech.json',
-            'json_path': tssep.git_root / '/data/jsons/librispeech.json',
+            # 'json_path': egs_dir / 'libri_css/data/jsons/librispeech.json',  # better documentation, because the true value is stored
+            'json_path': '{egs_dir}/libri_css/data/jsons/librispeech.json',  # better probability, because only on path has to be env specific in the config
             'observation': "['observation']",
             'num_speakers': 1,
         }
@@ -484,7 +485,7 @@ class DatasetCfgs:
 @dataclasses.dataclass
 class Reader(pt.Configurable):
     """
-    >>> reader = Reader.new()
+    >>> reader = Reader.new(updates=dict(datasets=Reader.all_dataset_cfgs()))
     >>> for k in reader.datasets.keys(): print(k)  # only the used dataset will be in the config to avoid pollution
     SimLibriCSS-train-960_000_ch
     SimLibriCSS-dev-2_400_000_ch
@@ -548,7 +549,7 @@ class Reader(pt.Configurable):
     validate_dataset_name: 'str | list[str]' = 'SimLibriCSS-dev-2_400_000_ch'
     domain_adaptation_src_dataset_name: 'str | list[str]' = 'SimLibriCSS-dev'
     # eval_dataset_name: 'str | list[str]' = ('libri_css_ch', 'SimLibriCSS-dev', 'SimLibriCSS-test')
-    eval_dataset_name: 'str | list[str]' = ('libri_css_ch',)
+    eval_dataset_name: 'str | list[str]' = ('libri_css',)
 
     data_hooks: 'data_hooks.Sequential' = dataclasses.field(
         default_factory=data_hooks.Sequential
@@ -556,6 +557,13 @@ class Reader(pt.Configurable):
 
     # ToDo: Remove this, see /scratch/hpc-prf-nt2/cbj/deploy/css/egs/extract/150/slurm-train150-4500773.out
     sample_rate = 16000
+
+    path_format_mapping: dict = dataclasses.field(
+        default_factory=functools.partial(
+            dict,
+            egs_dir=egs_dir,
+        )
+    )
 
     # update_ex: dict = dataclasses.field(
     #     default_factory=functools.partial(
@@ -580,9 +588,25 @@ class Reader(pt.Configurable):
     db_cache: dict = dataclasses.field(
         init=False, repr=False, default_factory=dict)
 
+    def _format_json_path(self, json_path):
+        """
+        >>> reader = Reader.new(updates=dict(datasets=Reader.all_dataset_cfgs()))
+        >>> reader._format_json_path('{egs_dir}/libri_css/data/jsons/sim_libri_css_early.json')  # doctest: +ELLIPSIS
+        '.../tssep_data/egs/libri_css/data/jsons/sim_libri_css_early.json'
+        >>> reader._format_json_path(Path('{egs_dir}/libri_css/data/jsons/sim_libri_css_early.json'))  # doctest: +ELLIPSIS
+        PosixPath('.../tssep_data/egs/libri_css/data/jsons/sim_libri_css_early.json')
+        """
+        if isinstance(json_path, (tuple, list)):
+            return tuple(map(self._format_json_path, json_path))
+        elif isinstance(json_path, str):
+            return json_path.format(**self.path_format_mapping)
+        elif isinstance(json_path, Path):
+            return Path(os.fspath(json_path).format(**self.path_format_mapping))
+        else:
+            raise TypeError(type(json_path), json_path)
+
     def get_db(self, json_path) -> 'JsonDatabase':
-        if isinstance(json_path, list):
-            json_path = tuple(json_path)
+        json_path = self._format_json_path(json_path)
         try:
             return self.db_cache[json_path]
         except KeyError:
@@ -653,6 +677,17 @@ class Reader(pt.Configurable):
         ex = self.data_hooks(ex, reader=self, load=load_audio)
         return ex
 
+    class _AddVariantName:
+        def __init__(self, dataset_variant):
+            self.dataset_variant = dataset_variant
+
+        def __repr__(self):
+            return f"{self.__class__.__qualname__}({self.dataset_variant})"
+
+        def __call__(self, ex):
+            ex['dataset_variant'] = self.dataset_variant
+            return ex
+
     def __call__(
             self,
             dataset_name="SimLibriCSS-test",
@@ -662,12 +697,12 @@ class Reader(pt.Configurable):
     ):
         if isinstance(dataset_name, str):
             dsmeta: PBJsonDSMeta = self.datasets[dataset_name]
-            ds = dsmeta.get_dataset(self)
+            ds = dsmeta.get_dataset(self).map(self._AddVariantName(dataset_name))
         else:
             dss = []
             for name in dataset_name:
                 dsmeta: PBJsonDSMeta = self.datasets[name]
-                dss.append(dsmeta.get_dataset(self))
+                dss.append(dsmeta.get_dataset(self).map(self._AddVariantName(name)))
             ds = lazy_dataset.concatenate(dss)
 
         ds = ds.apply(pre_load_apply)
