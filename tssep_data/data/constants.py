@@ -16,4 +16,6 @@ if not json_dir.exists():
         p = Path(p)
         if p.exists():
             json_dir = p
+            eg_dir = json_dir.parent.parent
+            egs_dir = eg_dir.parent
             break
