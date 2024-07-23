@@ -2,6 +2,7 @@ import subprocess
 import sys
 import tempfile
 from tssep.train.run import *
+from tssep_data.util.bash import c
 
 
 @ex.command(unobserved=True)
@@ -67,7 +68,7 @@ def sbatch(
     sr = SlurmResources(
         gpus=gpus,
         cpus=8 if gpus <= 1 else 6 * gpus,
-        mem='45GB' if gpus <= 1 else f'{25 * gpus}GB',
+        mem='55GB' if gpus <= 1 else f'{25 * gpus}GB',
         time='3 days',
     )
     file = storage_dir / 'run_sbatch.sh'
@@ -84,7 +85,8 @@ def sbatch(
     )
 
     if not dry_run:
-        subprocess.run([sr.sbatch_executable, str(file)], check=True, env=os.environ)
+        print(f'{c.Green}$ sbatch {file}{c.Color_Off}')
+        subprocess.run(['sbatch', str(file)], check=True, env=os.environ)
     else:
         print(f'Would submit {file}, but dry_run is True.')
 

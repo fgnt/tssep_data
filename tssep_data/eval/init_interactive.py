@@ -20,7 +20,7 @@ def main(folder='.'):
 
     ranking = ckpt['hooks']['BackOffValidationHook']['ckpt_ranking']
 
-    from tssep.util.cmd_runner import user_select, run
+    from tssep_data.util.cmd_runner import user_select, run
     file = user_select('Select a checkpoint', {
         f'{file} (loss={loss})': folder / file
         for file, loss in ranking
@@ -28,7 +28,7 @@ def main(folder='.'):
     assert file.exists(), file
 
     run(
-        f'python -m tssep.eval.run init with config.yaml default eeg.ckpt={file}'
+        f'python -m tssep_data.eval.run init with config.yaml default eeg.ckpt={file}'
     )
 
 

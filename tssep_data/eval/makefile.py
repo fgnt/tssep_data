@@ -66,6 +66,7 @@ def makefile(_config, eg, eeg, eval_slurm_resources, asr_slurm_resources):
     m = SimpleMakefile()
     m += 'SHELL := /bin/bash'
     m.phony['help'] = 'cat Makefile'
+    m.phony['init'] = f'python -m {main_python_path} init with config.yaml'
     m.phony['run'] = f'python -m {main_python_path} with config.yaml'
     m.phony['run_pdb'] = f'python -m {main_python_path} --pdb with config.yaml'
     # m.phony['sbatch'] = '{main_python_path} sbatch with config.yaml'
@@ -150,8 +151,8 @@ def makefile(_config, eg, eeg, eval_slurm_resources, asr_slurm_resources):
             shell=True,
             shell_wrap=True,
         ),
-        f"meeteval-wer cpwer --normalize='lower,rm(.?!,)' -r asr/ref.stm -h asr/hyp_nemo.json",
-        f'cat asr/hyp_nemo.json'
+        f"meeteval-wer cpwer --normalize='lower,rm(.?!,)' -r asr/ref.stm -h asr/hyp_words_nemo.json",
+        f'cat asr/hyp_words_nemo_cpwer.json'
     ]
 
     # add_asr_wer_to_makefile(m, eval_id)

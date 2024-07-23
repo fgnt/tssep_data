@@ -18,7 +18,7 @@ def makefile(_config, eg, dump=True):
     m.phony['sbatch'] = f'python -m {main_python_path} sbatch with config.yaml'
 
     m.phony['eval_init'] = f'python -m {eval_python_path} init with config.yaml default'
-    m.phony['eval_init_interactive'] = f'python -m tssep.eval.init_interactive'
+    m.phony['eval_init_interactive'] = f'python -m tssep_data.eval.init_interactive'
 
     if dump:
         m.dump(storage_dir / 'Makefile')

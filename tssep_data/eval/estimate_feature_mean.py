@@ -193,7 +193,7 @@ def estimate_aux_mean_std(
 
     """
     from css.egs.extract.data_ivector import MeetingIVectorReader, SimpleIVectorReader
-    from tssep.data.data_hooks import SpeakerEmbeddings
+    from tssep_data.data.data_hooks import SpeakerEmbeddings
     with torch.no_grad():
         if isinstance(aux_data, (MeetingIVectorReader, SimpleIVectorReader)):
 
@@ -216,7 +216,7 @@ def estimate_aux_mean_std(
 
 import tssep.train.experiment
 import tssep.train.model
-import tssep.eval.experiment
+import tssep_data.eval.experiment
 
 
 def main(config, device='cpu'):
@@ -225,7 +225,7 @@ def main(config, device='cpu'):
         config_flat = pb.utils.nested.FlatView(config)
 
         eg = tssep.train.eexperiment.Experiment.from_config(config_flat['eg'])
-        eeg = tssep.eval.experiment.EvalExperiment.from_config(config_flat['eeg'])
+        eeg = tssep_data.eval.experiment.EvalExperiment.from_config(config_flat['eeg'])
         model: 'tssep.train.model.Model' = eg.trainer.model
 
         # if 'eeg' in config_flat and config_flat['eeg.reader'] is not None:
