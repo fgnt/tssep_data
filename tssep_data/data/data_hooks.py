@@ -10,6 +10,7 @@ import itertools
 import os
 import sys
 import typing
+import re
 
 if os.path.dirname(os.path.abspath(__file__)) == sys.path[0]:
     del sys.path[0]
@@ -87,25 +88,40 @@ class ABC:
 
 @dataclasses.dataclass
 class _Template(ABC, pt.configurable.Configurable):
-    json: str
+    json: 'str | list[str] | tuple[str] | dict[str, str]'
+    # str, list, tuple: Load all datasets and pick the requested one
+    # dict: Load the json, that has the dataset name as key.
+    #       If the dataset name is not found in the dict, the keys of the dict
+    #       are used as a regex to find the right json.
 
     cache: dict = dataclasses.field(default_factory=dict, init=False)
 
-    def get_ds(self, reader, dataset_name):
+    def get_ds(self, reader, dataset_name, dataset_variant):
         # Takes care of the caching to avoid overhead
         # The reader caches the json data, that might e used between different
         # instances.
         # The instance itself caches the dataset.
         if isinstance(dataset_name, (tuple, list)):
+            assert dataset_variant is None, (dataset_name, dataset_variant, reader)
             return lazy_dataset.concatenate(
-                [self.get_ds(reader, name) for name in dataset_name])
+                [self.get_ds(reader, name, name) for name in dataset_name])
+
+        key = (dataset_name, dataset_variant)
 
         try:
             # Use try except, to make second call as fast as possible.
-            ds = self.cache[dataset_name]
+            ds = self.cache[key]
         except KeyError:
-            db = reader.get_db(self.json)
-            ds = self.cache[dataset_name] = db.get_dataset(dataset_name)
+            if isinstance(self.json, dict):
+                try:
+                    db = reader.get_db(self.json[dataset_variant])
+                except KeyError:
+                    keys = [k for k in self.json.keys() if k in dataset_variant or re.search(k, dataset_variant)]
+                    assert len(keys) == 1, (dataset_name, dataset_variant, keys, self.json.keys(), self.__class__.__name__)
+                    db = reader.get_db(self.json[keys[0]])
+            else:
+                db = reader.get_db(self.json)
+            ds = self.cache[key] = db.get_dataset(dataset_name)
         return ds
 
 
@@ -167,7 +183,7 @@ class FramewiseEmbeddings(_Template):
         """
         # ToDO: Consider start_orig and end_orig
         
-        ds = self.get_ds(reader, ex['dataset'])
+        ds = self.get_ds(reader, ex['dataset'], ex['dataset_variant'])
 
         ex_aux = ds[ex['example_id']]
 
@@ -483,18 +499,33 @@ class FramewiseEmbeddings(_Template):
 @dataclasses.dataclass
 class SpeakerEmbeddings(_Template):
     # json: 'str | list[str]' = '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/simLibriCSS_oracle_ivectors.json'
-    json: 'str | list[str] | tuple[str]' = (
-        eg_dir / 'data/ivector/simLibriCSS_ch_oracle_ivectors.json',
-        # egs_dir / 'ivector/simLibriCSS_oracle_ivectors.json',
-        eg_dir / 'data/ivector/libriCSS_espnet_ivectors.json',
-        # egs_dir / 'ivector/libriCSS_oracle_ivectors.json',
-        # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/simLibriCSS_oracle_ivectors.json',
-        # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/libriCSS_espnet_ivectors.json',
-        # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/3/sim_libri_css_ch_8spk_oracle_dvectors.json',
-        # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/4/libri_css_ch_8spk_ch0_oracle_dvectors.json',
-        # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/5/libri_css_ch_8spk_ch_oracle_dvectors.json',
-        # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/3/sim_libri_css_ch_8spk_oracle_dvectors.json',
-    )
+    json: 'str | list[str] | tuple[str] | dict[str, str]' = dataclasses.field(default_factory=functools.partial(
+        dict,  # With dict, we get the support to load only the ivectors for the dataset that we need.
+        **{
+            # sacred complains about the regex wildcard char '.' (dot): It conflicts with the commandline, where dot separates nested keys.
+            # Hence, use '[^ ]' as wildcard alternative (anything except whitespace)
+            # 'SimLibriCSS-[^ ]*_ch': eg_dir / 'data/ivector/simLibriCSS_ch_oracle_ivectors.json',
+            'SimLibriCSS': [
+                '{egs_dir}/libri_css/data/ivector/simLibriCSS_ch_oracle_ivectors.json',
+                # '{egs_dir}/libri_css/data/ivector/simLibriCSS_oracle_ivectors.json',
+            ],
+            'libri_css': '{egs_dir}/libri_css/data/ivector/libriCSS_espnet_ivectors.json',
+            'libri_css_ch': '{egs_dir}/libri_css/data/ivector/libriCSS_ch_espnet_ivectors.json',
+        }
+    ))
+    #     (
+    #     eg_dir / 'data/ivector/simLibriCSS_ch_oracle_ivectors.json',
+    #     # egs_dir / 'ivector/simLibriCSS_oracle_ivectors.json',
+    #     eg_dir / 'data/ivector/libriCSS_espnet_ivectors.json',
+    #     eg_dir / 'data/ivector/libriCSS_ch_espnet_ivectors.json',
+    #     # egs_dir / 'ivector/libriCSS_oracle_ivectors.json',
+    #     # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/simLibriCSS_oracle_ivectors.json',
+    #     # '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/ivector/libriCSS_espnet_ivectors.json',
+    #     # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/3/sim_libri_css_ch_8spk_oracle_dvectors.json',
+    #     # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/4/libri_css_ch_8spk_ch0_oracle_dvectors.json',
+    #     # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/5/libri_css_ch_8spk_ch_oracle_dvectors.json',
+    #     # '/scratch/hpc-prf-nt2/cbj/deploy/cbj/egs/2023/dvector/3/sim_libri_css_ch_8spk_oracle_dvectors.json',
+    # )
     output_size: int = 100
     estimate: 'dict[str, bool]' = dataclasses.field(default_factory=functools.partial(
         dict,
@@ -529,7 +560,7 @@ class SpeakerEmbeddings(_Template):
          '7912': array(shape=(100,), dtype=float32),
          '7967': array(shape=(100,), dtype=float32)}
         """
-        ds = self.get_ds(reader, ex['dataset'])
+        ds = self.get_ds(reader, ex['dataset'], ex['dataset_variant'])
 
         example_id = ex['example_id']
         embedding_id = ex.get('embedding_id', example_id)
@@ -598,7 +629,7 @@ class SpeakerEmbeddings(_Template):
         >>> pb.utils.pretty.pprint(auxInput.mean_std('OV40', reader))
         (array(shape=(256,), dtype=float32), array(shape=(256,), dtype=float32))
         """
-        ds = self.get_ds(reader, datasets)
+        ds = self.get_ds(reader, datasets, None)
 
         paths = []
         for ex in ds:
@@ -738,9 +769,9 @@ class VAD(ABC):
     files: 'dict[str, str]' = dataclasses.field(default_factory=functools.partial(
         dict,
         **{
-            'SimLibriCSS-train': egs_dir / 'libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-train.pkl',
-            'SimLibriCSS-dev': egs_dir / 'libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-dev.pkl',
-            'SimLibriCSS-test': egs_dir / 'libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-test.pkl',
+            'SimLibriCSS-train': '{egs_dir}/libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-train.pkl',
+            'SimLibriCSS-dev': '{egs_dir}/libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-dev.pkl',
+            'SimLibriCSS-test': '{egs_dir}/libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-test.pkl',
             # 'SimLibriCSS-train': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css/target_vad/1/SimLibriCSS-train.pkl',
             # 'SimLibriCSS-dev': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css/target_vad/1/SimLibriCSS-dev.pkl',
             # 'SimLibriCSS-test': '/scratch/hpc-prf-nt2/cbj/deploy/css/egs/libricss/data/sim_libri_css/target_vad/1/SimLibriCSS-test.pkl',
