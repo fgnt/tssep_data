@@ -5,6 +5,7 @@ import shutil
 import sys
 from pathlib import Path
 
+import meeteval.io
 from tssep_data.util.slurm import cmd_to_hpc, CMD2HPC
 from tssep_data.util.cmd_runner import touch, CLICommands, confirm, run, Green, Color_Off, Red, env_check, maybe_execute, user_select, add_stage_cmd
 
@@ -456,25 +457,46 @@ def ivector():
     # run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {rttm_folder / "dev.rttm"} --out {rttm_folder / "orig_id"}')
     # run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {rttm_folder / "eval.rttm"} --out {rttm_folder / "orig_id"}')
 
-    @maybe_execute(target=Path('ivector/libriCSS_espnet_ivectors.json'))
-    def _(target):
-        libriCSS_dev_rttm = rttm_folder / 'dev.rttm'
-        libriCSS_eval_rttm = rttm_folder / 'eval.rttm'
+    for target, source in [
+        (cwd / 'ivector/libriCSS_espnet_ivectors.json', cwd / 'jsons/libriCSS_raw_chfiles.json'),
+        (cwd / 'ivector/libriCSS_ch_espnet_ivectors.json', cwd / 'jsons/libriCSS_raw_chfiles_ch.json'),
+    ]:
+        @maybe_execute(target=target)
+        def _(target):
+            if 'ch_espnet' in target.name:
+                rttms = []
+                for deveval in ['dev', 'eval']:
+                    file = rttm_folder / 'orig_id' / f'{deveval}.rttm'
+                    r = meeteval.io.RTTM.load(file)
+                    new = [
+                        line.replace(filename=line.filename + f'_ch{ch}')
+                        for line in r
+                        for ch in range(7)
+                    ]
+                    file = file.with_name(f'{deveval}_ch.rttm')
+                    meeteval.io.RTTM(new).dump(file)
+                    rttms.append(os.fspath(file))
+            else:
+                rttms = [
+                    os.fspath(rttm_folder / 'orig_id' / f'dev.rttm'),
+                    os.fspath(rttm_folder / 'orig_id' / f'eval.rttm'),
+                ]
 
-        import paderbox as pb
-        storage_dir = pb.io.new_subdir.get_new_subdir(target.parent)
+            import paderbox as pb
+            storage_dir = pb.io.new_subdir.get_new_subdir(target.parent)
 
-        run([
-            sys.executable, '-m', 'tssep_data.data.embedding.calculate_ivector_v2',
-            'with',
-            f'eg.ivector_dir={cwd}/ivector/librispeech_v1_extractor/exp/nnet3_cleaned',
-            f'eg.ivector_glob=*/ivectors/ivector_online.scp',
-            f'eg.json_path={cwd}/jsons/libriCSS_raw_chfiles.json',
-            f'eg.kaldi_eg_dir="{KALDI_ROOT}/egs/librispeech/s5"',
-            f'eg.storage_dir="{storage_dir}"',
-            f'eg.output_json={target.name}',
-            f'''eg.activity={{'type':'rttm','rttm':[{str(libriCSS_dev_rttm)!r},{str(libriCSS_eval_rttm)!r}]}}''',
-        ])
+            run([
+                sys.executable, '-m', 'tssep_data.data.embedding.calculate_ivector_v2',
+                'with',
+                f'eg.ivector_dir={cwd}/ivector/librispeech_v1_extractor/exp/nnet3_cleaned',
+                f'eg.ivector_glob=*/ivectors/ivector_online.scp',
+                f'eg.json_path={source}',
+                f'eg.kaldi_eg_dir="{KALDI_ROOT}/egs/librispeech/s5"',
+                f'eg.storage_dir="{storage_dir}"',
+                f'eg.output_json={target.name}',
+                # f'''eg.activity={{'type':'rttm','rttm':[{str(libriCSS_dev_rttm)!r},{str(libriCSS_eval_rttm)!r}]}}''',
+                f'eg.activity={{"type":"rttm","rttm":{rttms!r}}}',
+            ])
 
 
 add_stage_cmd(clicommands)
