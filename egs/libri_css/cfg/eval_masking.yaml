@@ -1,0 +1,4 @@
+eeg:
+    enhancer:
+      factory: tssep.train.enhancer.Masking
+    channel_reduction: median  # 'median', 'reference'

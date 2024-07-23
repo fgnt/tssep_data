@@ -1,0 +1,29 @@
+eg:
+  trainer:
+    model:
+      reader:
+        data_hooks:
+          tasks:
+            auxInput:
+              estimate:
+                SimLibriCSS-dev: True
+              json:
+                - '{egs_dir}/libri_css/data/ivector/simLibriCSS_oracle_ivectors.json'
+                - '{egs_dir}/libri_css/data/ivector/libriCSS_espnet_ivectors.json'
+#                - '{egs_dir}/libri_css/data/ivector/libriCSS_oracle_ivectors.json',
+eeg:
+    feature_statistics_domain_adaptation: mean_std
+    aux_feature_statistics_domain_adaptation: mean_std
+    wpe:
+      factory: tssep.train.enhancer.WPE
+    probability_to_segments:
+      subsegment:
+        algorithm: partial_gready  # 'optimal' or 'partial_gready'. 'optimal' is sometimes slow.
+      thresh: 0.3
+      max_kernel: 161
+      min_kernel: 81
+      min_frames: 40  # No effect, if max_kernel - min_kernel >= min_frames
+    nn_segmenter:
+      factory: tssep_data.eval.experiment.Segmenter
+      length: 4000
+      shift: 2000

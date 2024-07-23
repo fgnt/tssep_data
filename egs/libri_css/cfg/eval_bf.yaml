@@ -1,0 +1,7 @@
+eeg:
+    enhancer:
+      factory: tssep.train.enhancer.ClassicBF_np
+      bf: mvdr_souden  # 'ch0', 'mvdr_souden', ...
+      masking: True
+      masking_eps: 0.5
+    channel_reduction: median  # 'median', 'reference'
