@@ -18,12 +18,13 @@ import tqdm
 import paderbox as pb
 import padertorch as pt
 
-import tssep.io.compess
+import tssep_data.io.compess
 import tssep.train.enhancer
-from tssep.eval.probability_to_segments import DiscretizeVAD
+from tssep_data.eval.probability_to_segments import DiscretizeVAD
 # import css.io.compess
 # import css.egs.extract
 import tssep_data.data.data_hooks
+import tssep.train.model
 
 # from css.egs.extract.find_optimal_der import DiscretizeVAD
 
@@ -365,7 +366,7 @@ class EvalExperiment(pt.Configurable):
             c7json,
             # i,
             t,
-            model: 'css.egs.extract.model.Model',
+            model: 'tssep.train.model.Model',
             feature_transform,
             eg,
             reader,
@@ -421,7 +422,7 @@ class EvalExperiment(pt.Configurable):
             elif self.channel_reduction in ['median', 'none']:
                 # Use loop over microphone channel, otherwise some intermediate tensors have a size of 4.92 GiB.
                 Observation = ex['Observation']
-                output = model.ForwardOutput(mask=[], logit=None, embedding=[], vad_mask=[])
+                output = model.ForwardOutput(mask=None, logit=None, embedding=[], vad_mask=[])
 
                 for i, O in enumerate(Observation):
                     ex['Observation'] = O[None, ...]
@@ -432,7 +433,22 @@ class EvalExperiment(pt.Configurable):
                         output_: model.ForwardOutput = segmented_model_forward(ex, feature_transform=feature_transform[i])
 
                     assert output_.mask.numel() > 0, output_.mask.shape
-                    output.mask.append(output_.mask)
+                    if i == 0:
+                        # The make takes lots of the memory, hence store it
+                        # directly in the output object and avoid the list.
+                        # Example:
+                        #   Observation: Shape(7, 76971, 257), Bytes(2_215_533_264)
+                        #   output_.mask: Shape(8, 1, 76971, 257), Bytes(633_009_504)
+                        #   output.mask: Shape(7, 8, 1, 76971, 257), Bytes(4_431_066_528)
+                        # Storing it in a list, will cause a peak memory usage
+                        # (output.mask exists two times), when torch.stack is
+                        # used to create the tensor from the list of tensors.
+                        # Preallocating reduces the peak by
+                        # 4_431_066_528 - 633_009_504 bytes = 3_798_057_024 bytes.
+                        output.mask = output_.mask.new_empty([Observation.shape[0], *output_.mask.shape])
+                    assert output.mask.ndim > 1, output.mask.shape
+                    output.mask[i, ...] = output_.mask
+                    # output.mask.append(output_.mask)
                     output.embedding.append(output_.embedding)
 
                     if self.save_vad_output:
@@ -447,7 +463,8 @@ class EvalExperiment(pt.Configurable):
                 else:
                     raise ValueError(self.channel_reduction)
 
-                output.mask = tmp_func(torch.stack(output.mask, dim=0))
+                # output.mask = tmp_func(torch.stack(output.mask, dim=0))
+                output.mask = tmp_func(output.mask)
                 assert output.mask.numel() > 0, output.mask.shape
                 if self.save_vad_output:
                     if output.vad_mask is None or output.vad_mask[0] is None:
@@ -533,6 +550,7 @@ class EvalExperiment(pt.Configurable):
                         ),
                         unit='frames',
                     )
+
                 time_estimate_segments = [
                     {
                         start_end_frame: model.fe.istft(v)
@@ -593,7 +611,7 @@ class EvalExperiment(pt.Configurable):
             # assert max_std_over_f > 1e-5, max_std_over_f
             with t['save_mask_output']:
                 pb.io.dump(
-                    tssep.io.compess.ReduceMaskAsUint8(output.mask.cpu().numpy()),
+                    tssep_data.io.compess.ReduceMaskAsUint8(output.mask.cpu().numpy()),
                     eval_dir / 'mask' / ex['dataset'] / f'{ex["example_id"]}.pkl',
                     mkdir=True,
                     mkdir_parents=True,
@@ -675,24 +693,50 @@ class EvalExperiment(pt.Configurable):
 
         if self.feature_statistics_domain_adaptation:
             # assert self.reader is not None, (self.reader, 'Disable Domain adaptation, when data is the same.')
-            from tssep.eval.estimate_feature_mean import estimate_mean_std
+            from tssep_data.eval.estimate_feature_mean import estimate_mean_std
 
             allow_thread = True
 
-            eval_mean, eval_std = estimate_mean_std(
-                self.reader or model.reader,
-                self.reader.eval_dataset_name if self.reader else model.reader.eval_dataset_name,
-                model,
-                dtype=torch.float32, device=eg.device, allow_thread=allow_thread,
-                channel_slice=self.feature_statistics_domain_adaptation_channel_slice,
-                channel_wise=self.feature_statistics_domain_adaptation_channel_wise,
-            )
-            val_mean, val_std = estimate_mean_std(
-                model.reader, model.reader.domain_adaptation_src_dataset_name, model,
-                dtype=torch.float32, device=eg.device,
-                channel_slice=self.feature_statistics_domain_adaptation_channel_slice,
-                # channel_wise=self.feature_statistics_domain_adaptation_channel_wise,
-            )
+            # Use pickle to keep the exact values.
+            # Json and yaml may change float values.
+            feature_statistics_cache = eval_dir / 'cache' / 'feature_statistics.pkl'
+
+            if not feature_statistics_cache.exists():
+                eval_mean, eval_std = estimate_mean_std(
+                    self.reader or model.reader,
+                    self.reader.eval_dataset_name if self.reader else model.reader.eval_dataset_name,
+                    model,
+                    dtype=torch.float32, device=eg.device, allow_thread=allow_thread,
+                    channel_slice=self.feature_statistics_domain_adaptation_channel_slice,
+                    channel_wise=self.feature_statistics_domain_adaptation_channel_wise,
+                )
+                val_mean, val_std = estimate_mean_std(
+                    model.reader, model.reader.domain_adaptation_src_dataset_name, model,
+                    dtype=torch.float32, device=eg.device,
+                    channel_slice=self.feature_statistics_domain_adaptation_channel_slice,
+                    # channel_wise=self.feature_statistics_domain_adaptation_channel_wise,
+                )
+                feature_statistics = {
+                    'eval_mean': pt.utils.to_numpy(eval_mean),
+                    'eval_std': pt.utils.to_numpy(eval_std),
+                    'val_mean': pt.utils.to_numpy(val_mean),
+                    'val_std': pt.utils.to_numpy(val_std),
+                }
+                pb.io.dump(feature_statistics,
+                           feature_statistics_cache,
+                           mkdir=True, mkdir_exist_ok=True, mkdir_parents=True,
+                           unsafe=True)
+                pb.io.dump(feature_statistics,
+                           feature_statistics_cache.with_suffix('.json'),  # just for logging, i.e., human readable
+                           mkdir=True, mkdir_exist_ok=True, mkdir_parents=True)
+            else:
+                feature_statistics = pb.io.load(feature_statistics_cache, unsafe=True)
+                feature_statistics = {
+                    k: torch.tensor(v, device=eg.device) if isinstance(v, np.ndarray) else v.to(eg.device)
+                    for k, v in feature_statistics.items()
+                }
+                eval_mean, eval_std = feature_statistics['eval_mean'], feature_statistics['eval_std']
+                val_mean, val_std = feature_statistics['val_mean'], feature_statistics['val_std']
 
             def get_feature_transform(val_mean, val_std, eval_mean, eval_std):
                 if self.feature_statistics_domain_adaptation == 'mean_std':
