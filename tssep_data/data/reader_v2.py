@@ -695,22 +695,21 @@ class Reader(pt.Configurable):
             pre_load_apply=None,
             load_keys=['observation'],
     ):
-        if isinstance(dataset_name, str):
+        def get_ds(dataset_name):
             dsmeta: PBJsonDSMeta = self.datasets[dataset_name]
             ds = dsmeta.get_dataset(self).map(self._AddVariantName(dataset_name))
+            ds = ds.apply(pre_load_apply)
+            ds = ds.map(functools.partial(
+                self.prepare, load_audio_fn=dsmeta.load_audio,
+                load_audio=load_audio, load_keys=load_keys))
+            return ds
+
+        if isinstance(dataset_name, str):
+            ds = get_ds(dataset_name)
         else:
-            dss = []
-            for name in dataset_name:
-                dsmeta: PBJsonDSMeta = self.datasets[name]
-                dss.append(dsmeta.get_dataset(self).map(self._AddVariantName(name)))
-            ds = lazy_dataset.concatenate(dss)
-
-        ds = ds.apply(pre_load_apply)
-
-        ds = ds.map(functools.partial(
-            self.prepare, load_audio_fn=dsmeta.load_audio,
-            load_audio=load_audio, load_keys=load_keys))
-
+            assert len(dataset_name) >= 1, dataset_name
+            ds = lazy_dataset.concatenate([
+                get_ds(name) for name in dataset_name])
         return ds
 
 
