@@ -112,7 +112,12 @@ def run(cmd, cwd=None, env=None):
 
 def confirm(question):
     import questionary
-    return questionary.confirm(question).ask()
+    return questionary.confirm(question).unsafe_ask()
+
+
+def text(question):
+    import questionary
+    return questionary.text(question).unsafe_ask()
 
 
 def user_select(message, choices: 'tuple[Any] | list[Any] | dict', default=None):
@@ -130,11 +135,12 @@ def user_select(message, choices: 'tuple[Any] | list[Any] | dict', default=None)
         choices = {None: None, **choices}
         if isinstance(default, int) and default not in choices and default >= 0:
             default = keys[default]
-        return choices[questionary.select(message, keys, default).ask()]
+        sel = questionary.select(message, keys, default).unsafe_ask()
+        return choices[sel]
     else:
         if isinstance(default, int) and default not in choices and default >= 0:
             default = choices[default]
-        return questionary.select(message, choices, default).ask()
+        return questionary.select(message, choices, default).unsafe_ask()
 
 
 def touch(file):
