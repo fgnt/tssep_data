@@ -1,0 +1,177 @@
+script_python_path: tssep.train.run
+eg:
+  factory: tssep.train.experiment.Experiment
+  trainer:
+    factory: padertorch.train.trainer.Trainer
+    model:
+      factory: tssep.train.model.Model
+      fe:
+        factory: tssep.train.feature_extractor.ConcaternatedSTFTFeatures
+        fe1:
+          factory: tssep.train.feature_extractor_torchaudio.TorchMFCC
+          size: 1024
+          shift: 256
+          window_length: 1024
+          pad: true
+          fading: true
+          output_size: 40
+          window: hann
+          sample_rate: 16000
+          n_mfcc: 40
+          dct_norm: ortho
+          log_mels: false
+          f_min: 40
+          f_max: -400
+          n_mels: 40
+          mel_norm: null
+          mel_scale: htk
+        fe2:
+          factory: tssep.train.feature_extractor.Log1pMaxNormAbsSTFT
+          size: 1024
+          shift: 256
+          window_length: 1024
+          pad: true
+          fading: true
+          output_size: 513
+          window: blackman
+          statistics_axis: tf
+        output_size: 553
+        size: 1024
+        shift: 256
+        window: hann
+        window_length: 1024
+        pad: true
+        fading: true
+      reader:
+        factory: tssep_data.data.reader_v2.Reader
+        datasets:
+          SimLibriCSS-train-960_000_ch:
+            factory: tssep_data.data.reader_v2.SegmentPBJsonDSMeta
+            json_path: '{egs_dir}/libri_css/data/jsons/sim_libri_css_ch_early.json'
+            dataset_name: SimLibriCSS-train
+            num_speakers: 8
+            sample_rate: 16000
+            observation: '[''observation''][:1]'
+            segment_num_samples: 960000
+            minimum_segment_num_samples: null
+            mixup: 0.5
+          SimLibriCSS-dev-2_400_000_ch:
+            factory: tssep_data.data.reader_v2.SegmentPBJsonDSMeta
+            json_path: '{egs_dir}/libri_css/data/jsons/sim_libri_css_ch_early.json'
+            dataset_name: SimLibriCSS-dev
+            num_speakers: 8
+            sample_rate: 16000
+            observation: '[''observation''][:1]'
+            segment_num_samples: 2400000
+            minimum_segment_num_samples: 0
+            mixup: null
+          libri_css:
+            factory: tssep_data.data.reader_v2.PBJsonDSMeta
+            json_path: '{egs_dir}/libri_css/data/jsons/libriCSS_raw_chfiles.json'
+            dataset_name:
+            - 0S
+            - 0L
+            - OV10
+            - OV20
+            - OV30
+            - OV40
+            num_speakers: 8
+            sample_rate: 16000
+            observation: '["observation"]'
+          SimLibriCSS-dev:
+            factory: tssep_data.data.reader_v2.PBJsonDSMeta
+            json_path: '{egs_dir}/libri_css/data/jsons/sim_libri_css_early.json'
+            dataset_name: SimLibriCSS-dev
+            num_speakers: 8
+            sample_rate: 16000
+            observation: '[''observation''][:1]'
+        train_dataset_name: SimLibriCSS-train-960_000_ch
+        validate_dataset_name: SimLibriCSS-dev-2_400_000_ch
+        domain_adaptation_src_dataset_name: SimLibriCSS-dev
+        eval_dataset_name:
+        - libri_css
+        data_hooks:
+          factory: tssep_data.data.data_hooks.Sequential
+          tasks:
+            factory: dict
+            auxInput:
+              factory: tssep_data.data.data_hooks.SpeakerEmbeddings
+              json:
+              - '{egs_dir}/libri_css/data/ivector/simLibriCSS_ch_oracle_ivectors.json'
+              - '{egs_dir}/libri_css/data/ivector/libriCSS_espnet_ivectors.json'
+              output_size: 100
+              estimate:
+                factory: dict
+                0L: true
+                0S: true
+                OV10: true
+                OV20: true
+                OV30: true
+                OV40: true
+            vad:
+              factory: tssep_data.data.data_hooks.VAD
+              files:
+                factory: dict
+                SimLibriCSS-train: '{egs_dir}/libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-train.pkl'
+                SimLibriCSS-dev: '{egs_dir}/libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-dev.pkl'
+                SimLibriCSS-test: '{egs_dir}/libri_css/data/jsons/sim_libri_css_early/target_vad/v2/SimLibriCSS-test.pkl'
+      mask_estimator:
+        factory: tssep.train.net.MaskEstimator_v2
+        idim: 553
+        odim: 513
+        layers: 3
+        units: 300
+        projs: 320
+        dropout: 0
+        nmask: 1
+        pre_net: RNNP
+        aux_net: null
+        aux_net_output_size: 100
+        combination: cat
+        ts_vad: 8
+        output_resolution: tf
+        random_speaker_order: true
+        num_averaged_permutations: 2
+        input_normalizer: null
+        aux_normalizer: null
+        explicit_vad: false
+      enhancer:
+        factory: tssep.train.enhancer.Masking
+      loss:
+        factory: tssep.train.loss.LogMAE
+        target: speaker_reverberation_early
+        pit: false
+        # storage_dir: '{egs_dir}/libri_css/tssep_pretrained'
+    optimizer:
+      factory: padertorch.train.optimizer.Adam
+      gradient_clipping: 10
+      lr: 0.001
+      betas:
+      - 0.9
+      - 0.999
+      eps: 1.0e-08
+      weight_decay: 0
+      amsgrad: false
+    loss_weights: null
+    summary_trigger:
+    - 83
+    - iteration
+    checkpoint_trigger:
+    - 1000
+    - iteration
+    stop_trigger:
+    - 416666
+    - iteration
+    virtual_minibatch_size: 6
+  train_batchsize: 4
+  validation_batchsize: null
+  init_ckpt:
+    factory: tssep.train.init_ckpt.InitCheckPointVAD2Sep
+    init_ckpt: '{egs_dir}/extract/69/checkpoints/ckpt_2000.pth'
+    strict: true
+    bcast:
+    - mask_estimator.post_net.linear2.weight
+    - mask_estimator.post_net.linear2.bias
+    mode: repeat
+  init_ckpt_strict: true
+seed: 998036361

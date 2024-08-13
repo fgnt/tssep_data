@@ -290,6 +290,7 @@ def prepare_sim_libri_css():
         def compress_json(target, source):
             run(f'gzip -f -k {source}')
 
+    ivector('sim_libri_css')
 
 @clicommands
 def prepare_libri_css():
@@ -347,10 +348,10 @@ def prepare_libri_css():
         assert for_release_folder.exists(), for_release_folder
         run(f'{sys.executable} -m tssep_data.database.libri_css.create_stm {for_release_folder} {target}')
 
+    ivector('libri_css')
 
-@clicommands
-def ivector():
 
+def ivector(dataset):
     ivector_dir = Path('ivector/librispeech_v1_extractor')
     @maybe_execute(done_file=True, target=ivector_dir)
     def download_pretrained_librispeech_model():
@@ -399,12 +400,16 @@ def ivector():
                 case otherwise:
                     raise AssertionError(otherwise)
 
-    for target, source in [
-        ('ivector/simLibriCSS_oracle_ivectors.json', 'jsons/sim_libri_css.json'),
-        ('ivector/simLibriCSS_ch_oracle_ivectors.json', 'jsons/sim_libri_css_ch.json'),
-        ('ivector/libriCSS_oracle_ivectors.json', 'jsons/libriCSS_raw_chfiles.json'),  # It is not critical here, that the annotations have a small offset.
-        ('ivector/libriCSS_ch_oracle_ivectors.json', 'jsons/libriCSS_raw_chfiles_ch.json'),
-    ]:
+    for target, source in {
+            'sim_libri_css': [
+                ('ivector/simLibriCSS_oracle_ivectors.json', 'jsons/sim_libri_css.json'),
+                ('ivector/simLibriCSS_ch_oracle_ivectors.json', 'jsons/sim_libri_css_ch.json'),
+            ],
+            'libri_css': [
+                ('ivector/libriCSS_oracle_ivectors.json', 'jsons/libriCSS_raw_chfiles.json'),  # It is not critical here, that the annotations have a small offset.
+                ('ivector/libriCSS_ch_oracle_ivectors.json', 'jsons/libriCSS_raw_chfiles_ch.json'),
+            ]
+    }[dataset]:
         assert Path(source).exists(), source
         @maybe_execute(target=Path(target))
         def _(target):
@@ -454,13 +459,14 @@ def ivector():
         @maybe_execute(target=target, source=file)
         def fix_exampleid(target, source):
             run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {source} --out {target.parent}')
-    # run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {rttm_folder / "dev.rttm"} --out {rttm_folder / "orig_id"}')
-    # run(f'{sys.executable} -m tssep_data.libricss.fix_exampleid rttm {rttm_folder / "eval.rttm"} --out {rttm_folder / "orig_id"}')
 
-    for target, source in [
-        (cwd / 'ivector/libriCSS_espnet_ivectors.json', cwd / 'jsons/libriCSS_raw_chfiles.json'),
-        (cwd / 'ivector/libriCSS_ch_espnet_ivectors.json', cwd / 'jsons/libriCSS_raw_chfiles_ch.json'),
-    ]:
+    for target, source in {
+            'sim_libri_css': [],
+            'libri_css': [
+                (cwd / 'ivector/libriCSS_espnet_ivectors.json', cwd / 'jsons/libriCSS_raw_chfiles.json'),
+                (cwd / 'ivector/libriCSS_ch_espnet_ivectors.json', cwd / 'jsons/libriCSS_raw_chfiles_ch.json'),
+            ]
+    }[dataset]:
         @maybe_execute(target=target)
         def _(target):
             if 'ch_espnet' in target.name:

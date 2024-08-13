@@ -20,14 +20,12 @@ from tssep_data.util.cmd_runner import touch, CLICommands, confirm, run, c, mayb
 clicommands = CLICommands()
 
 
-def launch_training(
+def maybe_init(
         storage_dir,
-        name,
         init_fn,
-        checkpoint=False,
 ):
     cwd = Path.cwd()
-    storage_dir = storage_dir
+    storage_dir = Path(storage_dir)
 
     @maybe_execute(
         target=(storage_dir / 'config.yaml').relative_to(cwd),
@@ -38,6 +36,16 @@ def launch_training(
     )
     def _():
         init_fn()
+
+
+def launch_training(
+        storage_dir,
+        name,
+        init_fn,
+):
+    storage_dir = storage_dir
+
+    maybe_init(storage_dir, init_fn)
 
     q = f'Start/Submit the {name} training in {storage_dir!r}?'
     if (storage_dir / 'checkpoints').exists():
@@ -138,6 +146,60 @@ def tssep():
 
 
 @clicommands
+def tssep_pretrained_eval():
+    cwd = Path.cwd()
+    storage_dir = Path('tssep_pretrained').absolute()
+    checkpoint = storage_dir / f'checkpoints/ckpt_62000.pth'
+
+    def init_fn():
+        run([
+            sys.executable, '-m', 'tssep_data.train.run', 'init', 'with',
+            f'{cwd}/cfg/tssep_pretrained_77_62000.yaml',
+            f'eg.trainer.storage_dir={storage_dir}',
+        ])
+
+    maybe_init(storage_dir, init_fn)
+
+    def _download(url, file):
+        import urllib.request
+        print(f'Downloading {url} to {file}')
+        file.parent.mkdir(exist_ok=True, parents=True)
+        urllib.request.urlretrieve(url, file)
+
+    @maybe_execute(target=checkpoint.relative_to(cwd))
+    def download_pretrained_model(target):
+        url = 'https://huggingface.co/boeddeker/tssep_77_62000/resolve/main/ckpt_77_62000.pth?download=true'
+        _download(url, target)
+
+    # Use here a hard coded eval_dir, because here the code gets easier.
+    # Usually the eeg.eval_dir shouldn't be specified, it will automatically
+    # be assigned. The user can then read the path from the stdout and cd to
+    # that directory.
+    eval_dir = storage_dir / 'eval' / '62000' / '1'
+
+    @maybe_execute(target=(eval_dir).relative_to(cwd))
+    def _():
+        run(
+            f'python -m tssep_data.eval.run init with config.yaml default eeg.ckpt={checkpoint} eeg.eval_dir={eval_dir}',
+            cwd=storage_dir,
+        )
+
+    @maybe_execute(target=(eval_dir / 'cache' / 'feature_statistics.pkl').relative_to(cwd))
+    def download_feature_statistics(target):
+        # This is not necessary, but without it, the user needs' sim_libri_css.
+        url = 'https://huggingface.co/boeddeker/tssep_77_62000/resolve/main/feature_statistics.pkl?download=true'
+        _download(url, target)
+
+    @maybe_execute(target=(eval_dir / 'c7.json').relative_to(cwd))
+    def run_eval():
+        run('make run', cwd=eval_dir)
+
+    @maybe_execute(target=(eval_dir / 'asr' / 'hyp_words_nemo_cpwer.json').relative_to(cwd))
+    def run_asr():
+        run('make transcribe_nemo', cwd=eval_dir)  # use a fast ASR model
+
+
+@clicommands
 def espnet_gss():
     cwd = Path.cwd()
     STORAGE_DIR = cwd / 'espnet'
@@ -198,8 +260,6 @@ def _create_makefile():
 
 if __name__ == '__main__':
     cwd = Path.cwd()
-    VAD_STORAGE_DIR = Path(os.environ.get('VAD_STORAGE_DIR', cwd / 'tsvad')).absolute()
-    SEP_STORAGE_DIR = Path(os.environ.get('SEP_STORAGE_DIR', cwd / 'tssep')).absolute()
 
     file_parent = Path(__file__).parent
     if file_parent != cwd:
@@ -210,4 +270,7 @@ if __name__ == '__main__':
     import fire
     env_check()
     add_stage_cmd(clicommands)
+
+    VAD_STORAGE_DIR = Path(os.environ.get('VAD_STORAGE_DIR', cwd / 'tsvad')).absolute()
+    SEP_STORAGE_DIR = Path(os.environ.get('SEP_STORAGE_DIR', cwd / 'tssep')).absolute()
     fire.Fire(clicommands.to_dict(), command=None if sys.argv[1:] else 'stage')

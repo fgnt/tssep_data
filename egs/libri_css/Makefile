@@ -4,6 +4,10 @@
 help:
 	@cat Makefile
 
+.PHONY: data
+data:
+	make -C data
+
 .PHONY: tsvad
 tsvad:
 	python make.py tsvad
@@ -12,6 +16,14 @@ tsvad:
 tssep:
 	python make.py tssep
 
+.PHONY: tssep_pretrained_eval
+tssep_pretrained_eval:
+	python make.py tssep_pretrained_eval
+
+wer:
+	grep error_rate */eval/*/*/asr/hyp_words_nemo_cpwer.json | natsort
+
 .PHONY: tensorboard_symlink_tree
 tensorboard_symlink_tree:
 	python make.py tensorboard_symlink_tree
+
