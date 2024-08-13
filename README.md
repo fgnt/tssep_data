@@ -1,21 +1,19 @@
 
 # TS-SEP: Joint Diarization and Separation Conditioned on Estimated Speaker Embeddings
 
-This repository contains the data preparation code for the TS-SEP paper.
-The training and evaluation code is available at
-https://github.com/merlresearch/tssep .
-
+This repository contains the data preparation and evaluation code for the TS-SEP paper.
+The core and training code is available at https://github.com/merlresearch/tssep .
 
 # Installation
 
 Using an existing environment, you can install the data preparation code with:
 ```
-git clone https://github.com/fgnt/tssep_data.git
-cd tssep_data
-pip install -e .
-cd ..
 git clone https://github.com/merlresearch/tssep.git
 cd tssep
+pip install -e .
+cd ..
+git clone https://github.com/fgnt/tssep_data.git
+cd tssep_data
 pip install -e .
 ```
 
@@ -47,7 +45,7 @@ Steps:
 # MPI issues
 
 MPI is an old library and very common in HPC setups, nevertheless, some HPC setups don't work out of the box.
-(Workstations make less issues, just type `sudo apt install libopenmpi-dev` (or the counterpart of your package manager)
+(Workstations make less issues, just type `sudo apt install libopenmpi-dev`, or the counterpart of your package manager, 
 and it will install MPI).
 
 ## A high performance Open MPI point-to-point messaging module was unable to find any relevant network interfaces
