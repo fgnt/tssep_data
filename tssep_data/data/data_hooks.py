@@ -1,10 +1,3 @@
-"""
-
-Licence MIT
-Origin: Communications Department, Paderborn University, Germany
-
-"""
-
 # Fix doctest
 import itertools
 import os

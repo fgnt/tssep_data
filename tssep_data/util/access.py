@@ -1,10 +1,3 @@
-"""
-
-Licence MIT
-Origin: Communications Department, Paderborn University, Germany
-
-"""
-
 import re
 from paderbox.utils.mapping import DispatchError
 

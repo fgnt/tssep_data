@@ -1,8 +1,4 @@
 """
-
-Licence MIT
-Origin: Communications Department, Paderborn University, Germany
-
 Changes compared to gss.py:
  - Load segments of audio instead of all audio
     - Necessary on CHiME-5/6/7, because on session takes 100 GB memory

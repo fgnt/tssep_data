@@ -352,7 +352,7 @@ def pbjson(
         assert out.suffix == '.json', out
         assert len(jsons) == 1, f'Assert only one json with out allowed. Gout: {jsons}'
 
-    from cbj.lib.access import ItemAccessor
+    from tssep_data.util.access import ItemAccessor
 
     input_key = ItemAccessor(key)
     output_key = ItemAccessor(okey)

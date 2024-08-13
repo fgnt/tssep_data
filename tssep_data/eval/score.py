@@ -1,10 +1,3 @@
-"""
-
-Licence MIT
-Origin: Communications Department, Paderborn University, Germany
-
-"""
-
 from pathlib import Path
 
 import tssep

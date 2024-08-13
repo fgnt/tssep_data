@@ -1,9 +1,3 @@
-"""
-
-Licence MIT
-Origin: Communications Department, Paderborn University, Germany
-
-"""
 
 def _repr_pretty_(self, p, cycle):
     """
