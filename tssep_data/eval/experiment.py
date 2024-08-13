@@ -730,6 +730,7 @@ class EvalExperiment(pt.Configurable):
                            feature_statistics_cache.with_suffix('.json'),  # just for logging, i.e., human readable
                            mkdir=True, mkdir_exist_ok=True, mkdir_parents=True)
             else:
+                print(f'Load feature statistics from cache: {feature_statistics_cache}')
                 feature_statistics = pb.io.load(feature_statistics_cache, unsafe=True)
                 feature_statistics = {
                     k: torch.tensor(v, device=eg.device) if isinstance(v, np.ndarray) else v.to(eg.device)
