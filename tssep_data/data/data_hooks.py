@@ -778,7 +778,7 @@ class VAD(ABC):
             ds = self.cache[dataset_name]
         except KeyError:
             ds = self.cache[dataset_name] = lazy_dataset.new(
-                pb.io.load(self.files[dataset_name], unsafe=True),
+                pb.io.load(reader._format_json_path(self.files[dataset_name]), unsafe=True),
                 # immutable_warranty=None,  # Add again, when the new version is released.
             )
         return ds
