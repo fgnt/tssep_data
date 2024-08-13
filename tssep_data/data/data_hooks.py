@@ -551,14 +551,7 @@ class SpeakerEmbeddings(_Template):
         >>> ex = ds[0]
         >>> _ = SpeakerEmbeddings().__call__(ex, reader)
         >>> pb.utils.pretty.pprint(ex['auxInput'])
-        {'1752': array(shape=(100,), dtype=float32),
-         '289': array(shape=(100,), dtype=float32),
-         '3109': array(shape=(100,), dtype=float32),
-         '4766': array(shape=(100,), dtype=float32),
-         '6121': array(shape=(100,), dtype=float32),
-         '6549': array(shape=(100,), dtype=float32),
-         '7912': array(shape=(100,), dtype=float32),
-         '7967': array(shape=(100,), dtype=float32)}
+        array(shape=(8, 100), dtype=float32)
         """
         ds = self.get_ds(reader, ex['dataset'], ex['dataset_variant'])
 
