@@ -15,6 +15,8 @@ def makefile(_config, eg, dump=True):
 
     m = train_makefile(_config, eg, dump=False)
 
+    m.phony["run_pdb"] = f"python -m {main_python_path} --pdb with config.yaml"
+
     m.phony['sbatch'] = f'python -m {main_python_path} sbatch with config.yaml'
 
     m.phony['eval_init'] = f'python -m {eval_python_path} init with config.yaml default'
