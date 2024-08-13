@@ -12,6 +12,7 @@ from tssep_data.util.slurm import SlurmResources
 from tssep_data.util.slurm import cmd_to_hpc, bash_wrap
 import typing
 
+
 def get_eval_id(eg, eeg):
     storage_dir = Path(eg['trainer']['storage_dir'])
     eval_dir = Path(eeg['eval_dir'])
@@ -71,7 +72,7 @@ def makefile(_config, eg, eeg, eval_slurm_resources, asr_slurm_resources):
     m.phony['run_pdb'] = f'python -m {main_python_path} --pdb with config.yaml'
     # m.phony['sbatch'] = '{main_python_path} sbatch with config.yaml'
     m.phony['sbatch'] = cmd_to_hpc(
-        'make run', shell=True, block=False, **dataclasses.asdict(slurm))
+        'make run; make transcribe_nemo', shell=True, block=False, **dataclasses.asdict(slurm))
     m.phony['srun_debug'] = f'python -m {main_python_path} srun_debug with config.yaml'
 
     # Diff commands only work for train:
@@ -124,36 +125,26 @@ def makefile(_config, eg, eeg, eval_slurm_resources, asr_slurm_resources):
         f'python -m {main_python_path.parent / "c7_frame_to_second"} c7.json --out=asr/hyp.json',
     ]
 
-    m.phony['transcribe_tiny.en'] = [
-        'mkdir -p asr',
-        f'make asr/ref.stm asr/hyp.json',
-        f'python -m {main_python_path.parent / "transcribe"} launch asr/hyp.json',
-        f"meeteval-wer cpwer --normalize='lower,rm(.?!,)' -r asr/ref.stm -h asr/hyp_whisper_tiny.en.json",
-        f'cat asr/hyp_whisper_tiny.en_cpwer.json'
-    ]
+    for make_target, model_tag, resources in [
+            ('transcribe_nemo', 'nemo', dict(mem='3G', time='1h', mpi='20')),
+            ('transcribe_wavlm', 'wavlm', dict(mem='8G', time='12h', mpi='40')),
+            ('transcribe_base', 'espnet', dict(mem='5G', time='6h', mpi='20')),
+    ]:
+        m.phony[make_target] = [
+            f'mkdir -p asr',
+            f'make asr/ref.stm asr/hyp.json',
+            cmd_to_hpc(
+                f'python -m tssep_data.asr seglst asr/hyp.json --model_tag={model_tag} --key=audio_path',
+                **resources,
+                job_name=f'{make_target}',
+                block=True,
+                shell=True,
+                shell_wrap=True,
+            ),
+            f"meeteval-wer cpwer --normalize='lower,rm(.?!,)' -r asr/ref.stm -h asr/hyp_words_{model_tag}.json",
+            f'cat asr/hyp_words_{model_tag}_cpwer.json'
+        ]
 
-    m.phony['transcribe_large-v2'] = [
-        f'mkdir -p asr',
-        f'make asr/ref.stm asr/hyp.json',
-        f'python -m {main_python_path.parent / "transcribe"} launch asr/hyp.json --model_name="large-v2"',
-        f"meeteval-wer cpwer --normalize='lower,rm(.?!,)' -r asr/ref.stm -h asr/hyp_whisper_large-v2.json",
-        f'cat asr/hyp_whisper_large-v2_cpwer.json'
-    ]
-
-    m.phony['transcribe_nemo'] = [
-        f'mkdir -p asr',
-        f'make asr/ref.stm asr/hyp.json',
-        cmd_to_hpc(
-            f'python -m cbj.transcribe.cli chime7 asr/hyp.json --model_tag=nemo --key=audio_path',
-            mem='3G', time='1h', mpi='20',
-            job_name=f'nemo_asr',
-            block=True,
-            shell=True,
-            shell_wrap=True,
-        ),
-        f"meeteval-wer cpwer --normalize='lower,rm(.?!,)' -r asr/ref.stm -h asr/hyp_words_nemo.json",
-        f'cat asr/hyp_words_nemo_cpwer.json'
-    ]
 
     # add_asr_wer_to_makefile(m, eval_id)
 
