@@ -21,10 +21,14 @@ def main(folder='.'):
     ranking = ckpt['hooks']['BackOffValidationHook']['ckpt_ranking']
 
     from tssep_data.util.cmd_runner import user_select, run
-    file = user_select('Select a checkpoint', {
-        f'{file} (loss={loss})': folder / file
-        for file, loss in ranking
-    })
+    try:
+        file = user_select('Select a checkpoint', {
+            f'{file} (loss={loss})': folder / file
+            for file, loss in ranking
+        })
+    except KeyboardInterrupt:
+        print('Aborted by Ctrl+C')
+        return
     assert file.exists(), file
 
     run(
