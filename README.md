@@ -27,10 +27,10 @@ ToDo: Limit this to whisper, it has less dependencies.
 
 # LibriCSS data preparation, training and evaluation
 
-[egs/libri_css/README.md](egs/libri_css/README.md) contains the instructions
+[egs/libri_css/README.md#steps-to-run-the-recipe](egs/libri_css/README.md#steps-to-run-the-recipe) contains the instructions
 for the LibriCSS data preparation, training and evaluation.
 
 # LibriCSS evaluation with pretrained model
 
-[egs/libri_css/README.md](egs/libri_css/README.md) contains the instructions
-for the LibriCSS evaluation with a pretrained model.
+[egs/libri_css/README.md#steps-to-evaluate-a-pretrained-model](egs/libri_css/README.md#steps-to-evaluate-a-pretrained-model)
+contains the instructions for the LibriCSS evaluation with a [pretrained model](https://huggingface.co/boeddeker/tssep_77_62000/tree/main).
