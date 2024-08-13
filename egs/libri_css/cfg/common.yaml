@@ -4,6 +4,9 @@ eg:
 #  factory: css.egs.extract.experiment.Experiment
   trainer:
 #    factory: padertorch.train.trainer.Trainer
+    stop_trigger:
+     - 100000
+     - iteration
     model:
 #      factory: tssep.train.model.Model
       reader:
