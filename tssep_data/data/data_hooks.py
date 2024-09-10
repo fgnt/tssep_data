@@ -637,31 +637,55 @@ class SpeakerEmbeddings(_Template):
 
     _transform = None
 
-    def domain_adaptation(self, reader, kind, consider_mpi=True):
+    def domain_adaptation(self, reader, kind, consider_mpi=True, statistics_cache=None):
         import dlp_mpi
 
         if dlp_mpi.IS_MASTER:
             print('Domain Adaptation', kind,
                   f'{reader.domain_adaptation_src_dataset_name} -> {reader.eval_dataset_name}')
-            # return dlp_mpi.bcast(
-            #     self.domain_adaptation(reader, kind, consider_mpi=False)
-            #     if dlp_mpi.IS_MASTER else
-            #     None
-            # )
-        
-            datasets = sorted({
-                ex['dataset']
-                for ex in
-                reader(reader.eval_dataset_name, load_audio=False)
-            })
-            # reader.data_hooks.tasks['auxInput']
-            aux_eval_mean, aux_eval_std = self.mean_std(datasets, reader)
+            statistics_cache = Path(statistics_cache)
+            if not statistics_cache.exists():
+                # return dlp_mpi.bcast(
+                #     self.domain_adaptation(reader, kind, consider_mpi=False)
+                #     if dlp_mpi.IS_MASTER else
+                #     None
+                # )
 
-            datasets = sorted({
-                ex['dataset']
-                for ex in reader(reader.domain_adaptation_src_dataset_name, load_audio=False)
-            })
-            aux_val_mean, aux_val_std = self.mean_std(datasets, reader)
+                datasets = sorted({
+                    ex['dataset']
+                    for ex in
+                    reader(reader.eval_dataset_name, load_audio=False)
+                })
+                # reader.data_hooks.tasks['auxInput']
+                aux_eval_mean, aux_eval_std = self.mean_std(datasets, reader)
+
+                datasets = sorted({
+                    ex['dataset']
+                    for ex in reader(reader.domain_adaptation_src_dataset_name, load_audio=False)
+                })
+
+                aux_val_mean, aux_val_std = self.mean_std(datasets, reader)
+
+                feature_statistics = {
+                    'aux_val_mean': aux_val_mean,
+                    'aux_val_std': aux_val_std,
+                    'aux_eval_mean': aux_eval_mean,
+                    'aux_eval_std': aux_eval_std,
+                }
+                pb.io.dump(feature_statistics,
+                           statistics_cache,
+                           mkdir=True, mkdir_exist_ok=True, mkdir_parents=True,
+                           unsafe=True)
+                pb.io.dump(feature_statistics,
+                           statistics_cache.with_suffix('.json'),  # just for logging, i.e., human readable
+                           mkdir=True, mkdir_exist_ok=True, mkdir_parents=True)
+            else:
+                print('Load statistics from cache:', statistics_cache)
+                feature_statistics = pb.io.load(statistics_cache, unsafe=True)
+                aux_val_mean = feature_statistics['aux_val_mean']
+                aux_val_std = feature_statistics['aux_val_std']
+                aux_eval_mean = feature_statistics['aux_eval_mean']
+                aux_eval_std = feature_statistics['aux_eval_std']
         else:
             aux_val_mean, aux_val_std = None, None
             aux_eval_mean, aux_eval_std = None, None

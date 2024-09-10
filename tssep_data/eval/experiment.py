@@ -783,11 +783,13 @@ class EvalExperiment(pt.Configurable):
             model.reader.data_hooks.tasks['auxInput'].domain_adaptation(
                 model.reader, self.aux_feature_statistics_domain_adaptation,
                 consider_mpi=True,
+                statistics_cache=eval_dir / 'cache' / 'aux_feature_statistics.pkl',
             )
             if 'auxInput2' in model.reader.data_hooks.tasks:
                 model.reader.data_hooks.tasks['auxInput2'].domain_adaptation(
                     model.reader, self.aux_feature_statistics_domain_adaptation,
                     consider_mpi=True,
+                    statistics_cache=eval_dir / 'cache' / 'aux2_feature_statistics.pkl',
                 )
 
         reader: [
