@@ -90,7 +90,7 @@ make libri_css prepare_libri_css
 
 ## Evaluation
 
-To evaluate a pretrained model, run the following command:
+To evaluate a pretrained model, run the following command in the `<tssep_data>/egs/libri_css` folder:
 ```bash
 make tssep_pretrained_eval
 ```
