@@ -97,8 +97,8 @@ eg:
             auxInput:
               factory: tssep_data.data.data_hooks.SpeakerEmbeddings
               json:
-              - '{egs_dir}/libri_css/data/ivector/simLibriCSS_ch_oracle_ivectors.json'
-              - '{egs_dir}/libri_css/data/ivector/libriCSS_espnet_ivectors.json'
+                SimLibriCSS: '{egs_dir}/libri_css/data/ivector/simLibriCSS_ch_oracle_ivectors.json'
+                libri_css: '{egs_dir}/libri_css/data/ivector/libriCSS_espnet_ivectors.json'
               output_size: 100
               estimate:
                 factory: dict
