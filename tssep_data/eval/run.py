@@ -98,12 +98,11 @@ def default():
             # Disable assert, that checks, whether the speaker_ids between ivector and dataset match.
             # At least one speaker has no non-overlapping activity and hence no ivector.
         },
-        'trainer.model.reader.data_hooks.tasks.auxInput.json': [
-            eg_dir / 'data/ivector/simLibriCSS_oracle_ivectors.json',
+        'trainer.model.reader.data_hooks.tasks.auxInput.json': {
+            'SimLibriCSS': eg_dir / 'data/ivector/simLibriCSS_oracle_ivectors.json',
             # tssep.git_root / 'egs/libri_css/data/ivector/libriCSS_oracle_ivectors.json',
-            eg_dir / 'data/ivector/libriCSS_espnet_ivectors.json',
-        ],
-
+            'libri_css': eg_dir / 'data/ivector/libriCSS_espnet_ivectors.json',
+        },
     })
     eeg = deflatten({
         'feature_statistics_domain_adaptation': 'mean_std',
