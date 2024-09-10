@@ -80,6 +80,8 @@ class DelayedKeyboardInterrupt:
 
 
 def run(cmd, cwd=None, env=None):
+    if isinstance(cmd, (tuple, list)):
+        cmd = [os.fspath(c) for c in cmd]
     cmd_str = cmd if isinstance(cmd, str) else shlex.join(cmd)
     print(f'Running {Green}{cmd_str}{Color_Off} in {Green}{cwd or "."}{Color_Off} with env={Green}{env}{Color_Off}')
     env_ = env if env is None else {**os.environ, **env}
