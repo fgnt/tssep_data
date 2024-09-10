@@ -184,11 +184,15 @@ def tssep_pretrained_eval():
             cwd=storage_dir,
         )
 
-    @maybe_execute(target=(eval_dir / 'cache' / 'feature_statistics.pkl').relative_to(cwd))
-    def download_feature_statistics(target):
-        # This is not necessary, but without it, the user needs' sim_libri_css.
-        url = 'https://huggingface.co/boeddeker/tssep_77_62000/resolve/main/feature_statistics.pkl?download=true'
-        _download(url, target)
+    for statistics_file in [
+        'feature_statistics.pkl',
+        'aux_feature_statistics.pkl',
+    ]:
+        @maybe_execute(target=(eval_dir / 'cache' / statistics_file).relative_to(cwd))
+        def download_feature_statistics(target):
+            # This is not necessary, but without it, the user needs' sim_libri_css.
+            url = f'https://huggingface.co/boeddeker/tssep_77_62000/resolve/main/{statistics_file}?download=true'
+            _download(url, target)
 
     @maybe_execute(target=(eval_dir / 'c7.json').relative_to(cwd))
     def run_eval():
