@@ -208,7 +208,7 @@ def srun_debug(eg, eeg, _config, _run, eval_slurm_resources: SlurmResources):
     eval_slurm_resources.time = f"{min(1, eval_slurm_resources._time(style='hours'))}h"
 
     name = f"{storage_dir.name}_{eval_dir.parent.name.replace('ckpt_', '')}_{eval_dir.name}"
-    cmd = f"{eval_slurm_resources.to_srun_str()} --job-name {name} --pty python -m tssep.eval.run --pdb -c eval{name} with config.yaml"
+    cmd = f"{eval_slurm_resources.to_srun_str()} --job-name {name} --pty python -m tssep_data.eval.run --pdb -c eval{name} with config.yaml"
     cmd = cmd.split()
     print(f'{c.Green}$ {subprocess.list2cmdline(cmd)}{c.Color_Off}')
 
