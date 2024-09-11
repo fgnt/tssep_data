@@ -35,7 +35,7 @@ def get_device(device=None):
             if dlp_mpi.SIZE == 1:
                 return torch.device('cuda')
             elif dlp_mpi.IS_MASTER:
-                print('CUDA is available, but MPI_SIZE > 1. Use CPU.')
+                print(f'{__file__}: CUDA is available, but MPI_SIZE > 1. Use CPU.')
                 return torch.device('cpu')
         return torch.device('cpu')
     else:
