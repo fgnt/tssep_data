@@ -95,9 +95,12 @@ class _Template(ABC, pt.configurable.Configurable):
         # instances.
         # The instance itself caches the dataset.
         if isinstance(dataset_name, (tuple, list)):
-            assert dataset_variant is None, (dataset_name, dataset_variant, reader)
+            # assert dataset_variant is None, (dataset_name, dataset_variant, reader)
+            if isinstance(dataset_variant, (tuple, list)):
+                assert len(dataset_variant) == 1, (dataset_name, dataset_variant, reader)
+                dataset_variant = dataset_variant[0]
             return lazy_dataset.concatenate(
-                [self.get_ds(reader, name, name) for name in dataset_name])
+                [self.get_ds(reader, name, dataset_variant) for name in dataset_name])
 
         key = (dataset_name, dataset_variant)
 
@@ -504,6 +507,7 @@ class SpeakerEmbeddings(_Template):
             ],
             'libri_css': '{egs_dir}/libri_css/data/ivector/libriCSS_espnet_ivectors.json',
             'libri_css_ch': '{egs_dir}/libri_css/data/ivector/libriCSS_ch_espnet_ivectors.json',
+            'notsofar_dev': '{egs_dir}/libri_css/data/ivector/notsofar_oracle_ivectors.json',
         }
     ))
     #     (
@@ -604,7 +608,7 @@ class SpeakerEmbeddings(_Template):
 
         return ex
 
-    def mean_std(self, datasets: 'list[str]', reader: 'Reader'):
+    def mean_std(self, datasets: 'list[str]', reader: 'Reader', dataset_variant=None):
         """
         >>> import paderbox as pb
         >>> from tssep_data.data.reader_v2 import Reader
@@ -615,7 +619,7 @@ class SpeakerEmbeddings(_Template):
         >>> pb.utils.pretty.pprint(auxInput.mean_std('OV40', reader))
         (array(shape=(256,), dtype=float32), array(shape=(256,), dtype=float32))
         """
-        ds = self.get_ds(reader, datasets, None)
+        ds = self.get_ds(reader, datasets, dataset_variant)
 
         paths = []
         for ex in ds:
@@ -657,14 +661,14 @@ class SpeakerEmbeddings(_Template):
                     reader(reader.eval_dataset_name, load_audio=False)
                 })
                 # reader.data_hooks.tasks['auxInput']
-                aux_eval_mean, aux_eval_std = self.mean_std(datasets, reader)
+                aux_eval_mean, aux_eval_std = self.mean_std(datasets, reader, reader.eval_dataset_name)
 
                 datasets = sorted({
                     ex['dataset']
                     for ex in reader(reader.domain_adaptation_src_dataset_name, load_audio=False)
                 })
 
-                aux_val_mean, aux_val_std = self.mean_std(datasets, reader)
+                aux_val_mean, aux_val_std = self.mean_std(datasets, reader, reader.domain_adaptation_src_dataset_name)
 
                 feature_statistics = {
                     'aux_val_mean': aux_val_mean,
