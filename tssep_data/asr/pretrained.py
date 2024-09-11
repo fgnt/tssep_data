@@ -17,6 +17,37 @@ if typing.TYPE_CHECKING:
     import espnet2.bin.asr_inference
 
 
+@functools.lru_cache()
+def get_device(device=None):
+    """
+    Returns the device for the current process.
+
+    For the following assume that cuda is available and no device specified:
+     - Single process: Use cuda.
+     - Multiple MPI process: Use cpu  .
+
+    """
+    if (
+            device is None
+            or device.lower() in ['none', 'null', '']
+    ):
+        if torch.cuda.is_available():
+            if dlp_mpi.SIZE == 1:
+                return torch.device('cuda')
+            elif dlp_mpi.IS_MASTER:
+                print('CUDA is available, but MPI_SIZE > 1. Use CPU.')
+                return torch.device('cpu')
+        return torch.device('cpu')
+    else:
+        if isinstance(device, str) and device.isdigit():
+            device = int(device)
+        device = torch.device(device)
+        if dlp_mpi.IS_MASTER and dlp_mpi.SIZE > 1 and device.type == 'cuda':
+            # Save memory by putting the idling root process on the CPU.
+            device = torch.device('cpu')
+        return device
+
+
 class TemplateASR:
     def __init__(self, cwd):
         # For WavLM the cwd must be changed. Hence, allow to change it.
@@ -64,10 +95,7 @@ class _ESPnetASRBase(TemplateASR):
     def get_speech2text(self, espnet_model_kwargs):
         from espnet2.bin.asr_inference import Speech2Text
 
-        device = 'cpu'
-        if torch.cuda.is_available():
-            if not dlp_mpi.IS_MASTER or dlp_mpi.SIZE == 1:
-                device = 'cuda'
+        device = get_device()
 
         penalty = 0.0
         lm_weight = 0.5
@@ -254,10 +282,7 @@ class ESPnetASR(TemplateASR):
             lm_weight = 0.5
 
             try:
-                device = 'cpu'
-                if torch.cuda.is_available():
-                    if not dlp_mpi.IS_MASTER or dlp_mpi.SIZE == 1:
-                        device = 'cuda'
+                device = get_device()
 
                 speech2text = Speech2Text(  # Speech2Text.from_pretrained
                     **espnet_model_kwargs,
@@ -341,9 +366,7 @@ class ESPnetASR(TemplateASR):
                 import time
                 time.sleep(2)
 
-                device = 'cpu'
-                if torch.cuda.is_available() and not dlp_mpi.IS_MASTER:
-                    device = 'cuda'
+                device = get_device()
                 speech2text = Speech2Text(  # Speech2Text.from_pretrained
                     **espnet_model_kwargs,
                     # Decoding parameters are not included in the model file
@@ -530,7 +553,9 @@ class NeMoASR(TemplateASR):
         import nemo.collections.asr as nemo_asr
 
         self.asr_model: nemo_asr.models.asr_model.ASRModel = _call(
-            nemo_asr.models.EncDecCTCModelBPE.from_pretrained, model_tag)
+            nemo_asr.models.EncDecCTCModelBPE.from_pretrained, model_tag,
+            map_location=get_device(),
+        )
 
     def apply_asr(self, file, start=None, stop=None, channel=None):
         assert start is None, (start, stop, channel)
