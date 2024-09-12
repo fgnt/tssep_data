@@ -62,6 +62,8 @@ def alias_to_apply_asr(alias: str):
 
         'nemo_xxl': 'nvidia/stt_en_fastconformer_transducer_xxlarge',
 
+        'nemo_c7': 'chime-dasr/nemo_baseline_models/FastConformerXL-RNNT-chime7-GSS-finetuned',
+
         # 'whisper/base.en': 'whisper/base.en',
         # Properties:
         #  - Trained for many datasets
@@ -84,10 +86,10 @@ def alias_to_apply_asr(alias: str):
     elif alias.startswith('whisper'):
         assert alias.startswith('whisper/'), alias
         return WhisperASR(alias.split('/', maxsplit=2)[1]).apply_asr
-    elif alias.startswith('nvidia'):
-        return NeMoASR(alias).apply_asr
     elif alias.startswith('espnet'):
         return ESPnetASRPartialBcast(alias).apply_asr
+    elif alias.startswith('nvidia') or 'nemo_baseline_models' in alias:
+        return NeMoASR(alias).apply_asr
     else:
         raise NotImplementedError(alias)
 

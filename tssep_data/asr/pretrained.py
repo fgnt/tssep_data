@@ -526,8 +526,11 @@ class NeMoASR(TemplateASR):
     >>> NeMoASR().apply_asr(file)
     'the birch canoe slid on the smooth planks'
 
-
     >>> NeMoASR('nvidia/stt_en_fastconformer_transducer_xxlarge').apply_asr(file)
+    'the birch canoe slid on the smooth planks'
+
+    >>> # NeMoASR('chime-dasr/nemo_baseline_models').apply_asr(file)
+    >>> NeMoASR('chime-dasr/nemo_baseline_models/FastConformerXL-RNNT-chime7-GSS-finetuned').apply_asr(file)
     'the birch canoe slid on the smooth planks'
 
     See https://huggingface.co/spaces/hf-audio/open_asr_leaderboard
@@ -551,6 +554,21 @@ class NeMoASR(TemplateASR):
             raise ImportError('pip install nemo_toolkit transformers pytorch_lightning youtokentome webdataset pyannote.audio jiwer datasets lhotse')
         nemo.utils.logging.setLevel(logging.ERROR)
         import nemo.collections.asr as nemo_asr
+
+        if model_tag.count('/') > 1:
+            # Hack to add support for file names different to the repo name
+            model_tag = model_tag.split('/')
+            file = '/'.join(model_tag[2:])
+            model_tag = '/'.join(model_tag[:2])
+
+            class ModelTag(str):
+                def split(self, sep, maxsplit=-1):
+                    r = super().split(sep, maxsplit=maxsplit)
+                    if sep == '/':
+                        return r + [file]
+                    return r
+
+            model_tag = ModelTag(model_tag)
 
         self.asr_model: nemo_asr.models.asr_model.ASRModel = _call(
             nemo_asr.models.EncDecCTCModelBPE.from_pretrained, model_tag,
