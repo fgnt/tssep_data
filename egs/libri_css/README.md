@@ -22,7 +22,7 @@ Alternatively, you can run `python make.py` in `<tssep_data>/egs/libri_css/data`
 The training is done in two steps. First, the TS-VAD model is trained and then
 the TS-SEP model.
 
-To start the training of the TS-VAD model, run the following command:
+To start the training of the TS-VAD model, run the following command in the folder `<tssep_data>/egs/libri_css`:
 ```bash
 make tsvad
 ```
@@ -37,7 +37,7 @@ simply type again `make tsvad` and select the start option.
 With [tensorboard](https://www.tensorflow.org/tensorboard), you can monitor the training progress.
 
 Once the training loss goes down, you can start the training of the TS-SEP
-model. Just run the following command:
+model. Just run the following command in the folder `<tssep_data>/egs/libri_css`:
 ```bash
 make tssep
 ```
