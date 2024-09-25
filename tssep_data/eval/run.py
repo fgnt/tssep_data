@@ -253,5 +253,5 @@ if __name__ == '__main__':
     print(shlex.join(psutil.Process().cmdline()))
     ex.run_commandline()
 
-    from tssep_data.util.slurm import shutdown_soon
-    shutdown_soon()  # Sometimes the Job gets stuck.
+    # from tssep_data.util.slurm import shutdown_soon
+    # shutdown_soon()  # Sometimes the Job gets stuck.
