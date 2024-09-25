@@ -50,10 +50,10 @@ parameters before starting the training, just as with the TS-VAD model.
 To evaluate the TS-SEP model, go in the `tssep` folder and run the following
 command:
 ```bash
-make eval_init  # or make eval_init_<checkpointnumber> e.g. make eval_init_62000
+make eval_init  # or make eval_init_interactive
 ```
-where `<checkpointnumber>` is the number of the checkpoint you want to
-evaluate.
+where `eval_init` will select the best checkpoint for the evaluation and
+`eval_init_interactive` asks you to select a checkpoint.
 
 Next, go to the newly created folder (e.g. `eval/62000/1`) and run the
 following command:
@@ -65,14 +65,16 @@ This will create an audio folder with the separated sources and a `c7.json`
 file, which contains the results of the separation.
 
 Next, you have to apply an ASR model to the enhance data.
-To use whisper `tiny.en`, run the following command:
+To use an ASR system from NeMo, run the following command:
 ```bash
-transcribe_tiny.en
+make transcribe_nemo
 ```
 This will create a `asr` folder with the transcriptions and calculate the 
-`WER`. Note, that `tiny.en` is a weak, but fast ASR model. So you will get
-a `WER` in the range of 10 % to 20 %, while stronger ASR models will give you
-`WER`'s below 10 %.
+`WER`. Note, that the ASR model is different from our publication, but it
+is much faster. You will get a `WER` in the range of 6 % to 8 %.
+If you want the same ASR model as in out publication, you can type
+`make transcribe_base` or `make transcribe_wavlm` (they will take more
+memory and significantly more time). 
 
 # Steps to evaluate a pretrained model
 
