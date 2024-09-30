@@ -65,16 +65,17 @@ This will create an audio folder with the separated sources and a `c7.json`
 file, which contains the results of the separation.
 
 Next, you have to apply an ASR model to the enhance data.
-To use an ASR system from NeMo, run the following command:
+To use an ASR system from NeMo, run the following commands:
 ```bash
+pip install nemo_toolkit transformers pytorch_lightning youtokentome webdataset pyannote.audio jiwer datasets lhotse
 make transcribe_nemo
 ```
 This will create a `asr` folder with the transcriptions and calculate the 
 `WER`. Note, that the ASR model is different from our publication, but it
 is much faster. You will get a `WER` in the range of 6 % to 8 %.
 If you want the same ASR model as in out publication, you can type
-`make transcribe_base` or `make transcribe_wavlm` (they will take more
-memory and significantly more time). 
+`make transcribe_base` or `make transcribe_wavlm` to use a pretrained ASR
+model from ESPnet (they will take more memory and significantly more time). 
 
 # Steps to evaluate a pretrained model
 
