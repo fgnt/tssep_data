@@ -10,6 +10,8 @@ and TS-SEP experiments in our 2024 IEEE/ACM TASLP article,
 by Christoph Boeddeker, Aswin Shanmugam Subramanian, Gordon Wichern, Reinhold Haeb-Umbach, Jonathan Le Roux
 ([IEEE Xplore](https://doi.org/10.1109/TASLP.2024.3350887), [arXiv](https://arxiv.org/abs/2303.03849)).
 
+The core and training code is available at https://github.com/merlresearch/tssep .
+
 # Installation
 
 Using an existing environment, you can install the data preparation code with:
