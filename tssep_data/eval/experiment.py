@@ -836,12 +836,15 @@ class EvalExperiment(pt.Configurable):
 
         audio = audio.gather()
         details = details.gather()
+        # ToDO: remove the code for the details and summary file
+        #       they are no longer used 
+        #       (original purpose: signal level metrics, but they don't work on meeting data, hence no longer used)
         # c7json = c7json.gather()
 
         print(f'Write summary: {eval_dir}')
 
         eval_dir = Path(eval_dir)
-        pb.io.dump(details, eval_dir / 'details.json')
+        # pb.io.dump(details, eval_dir / 'details.json')
 
         pb.io.dump(c7json, eval_dir / 'c7.json')
 
@@ -856,13 +859,13 @@ class EvalExperiment(pt.Configurable):
                 lambda x: (x[0][0], *x[0][2:])
             ).items()
         }, sep=None)
-        pb.io.dump(summary, eval_dir / 'summary.yaml')
-        for k, v in details.items():
-            pb.io.dump(v, eval_dir / f'summary_{k}.yaml')
+        # pb.io.dump(summary, eval_dir / 'summary.yaml')
+        # for k, v in details.items():
+        #     pb.io.dump(v, eval_dir / f'summary_{k}.yaml')
 
-        cmd = f"cat {eval_dir / 'summary.yaml'}"
-        print(f'$ {cmd}')
-        subprocess.run(cmd, shell=True)
+        # cmd = f"cat {eval_dir / 'summary.yaml'}"
+        # print(f'$ {cmd}')
+        # subprocess.run(cmd, shell=True)
 
 
 def approx_der(
