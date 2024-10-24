@@ -322,7 +322,7 @@ def main(
     # from css.egs.extract.data.sim_libri_css import SimLibriCSS
     # channel_slice = SimLibriCSS.to_slice(channel_slice)
 
-    from tssep.util.utils import str_to_slice
+    from tssep_data.util.utils import str_to_slice
     channel_slice = str_to_slice(channel_slice)
 
     if ',' in db_json:
@@ -446,7 +446,7 @@ def main(
 
 if __name__ == '__main__':
 
-    from css.slurm import set_memory_limit
+    from tssep_data.util.slurm import set_memory_limit
     set_memory_limit(10)
 
     import fire
