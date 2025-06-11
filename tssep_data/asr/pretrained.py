@@ -575,7 +575,59 @@ class NeMoASR(TemplateASR):
             map_location=get_device(),
         )
 
+    def transcribe(self, speech: 'np.ndarray'):
+        """
+        Only works for Nemo version 2.0.0 and later.
+        """
+        mode = ['full', 'segments', 'words', 'chars'][0]
+
+        h, = self.asr_model.transcribe(
+            speech,
+            timestamps=mode != 'full',
+        )
+        if mode == 'full':
+            result = h
+        elif mode == 'segments':
+            result = [
+                {
+                    'transcript': segment['segment'],
+                    'begin_time': segment['start'],
+                    'end_time': segment['end'],
+                }
+                for segment in h['segments']
+            ]
+        elif mode == 'words':
+            result = [
+                {
+                    'transcript': word['word'],
+                    'begin_time': word['start'],
+                    'end_time': word['end'],
+                }
+                for word in h.timestamp['word']
+            ]
+        elif mode == 'chars':
+            result = [
+                {
+                    'transcript': char['char'],
+                    'begin_time': char['start'],
+                    'end_time': char['end'],
+                }
+                for char in h.timestamp['char']
+            ]
+        else:
+            raise ValueError(mode)
+
+        return result
+
+
     def apply_asr(self, file, start=None, stop=None, channel=None):
+        import nemo
+        from packaging.version import Version
+        # NeMo 2.0.0 changed the API to support numpy arrays.
+        # Before, only file paths were supported.
+        if Version(nemo.__version__) >= Version('2.0.0'):
+            return super().apply_asr(file, start, stop, channel)
+
         assert start is None, (start, stop, channel)
         assert stop is None, (start, stop, channel)
         assert channel is None, (start, stop, channel)
@@ -591,10 +643,6 @@ class NeMoASR(TemplateASR):
                 return w1[0]
             except Exception:
                 raise Exception(transcribts, file)
-
-    def transcribe(self, speech: 'np.ndarray'):
-        # NeMo requires a file path.
-        return self.asr_model.transcribe([speech])
 
 
 def toy_example():
