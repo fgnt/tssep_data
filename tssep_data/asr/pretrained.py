@@ -584,6 +584,7 @@ class NeMoASR(TemplateASR):
         h, = self.asr_model.transcribe(
             speech,
             timestamps=mode != 'full',
+            verbose=False,
         )
         if mode == 'full':
             result = h
