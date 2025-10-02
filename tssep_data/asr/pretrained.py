@@ -15,6 +15,7 @@ import abc
 
 if typing.TYPE_CHECKING:
     import espnet2.bin.asr_inference
+    import espnet_model_zoo.downloader
 
 
 @functools.lru_cache()
@@ -27,17 +28,19 @@ def get_device(device=None):
      - Multiple MPI process: Use cpu  .
 
     """
+    # ESPnet complains about torch.device -> return str(torch.device(...))
     if (
             device is None
             or device.lower() in ['none', 'null', '']
     ):
+        device = torch.device('cpu')
         if torch.cuda.is_available():
             if dlp_mpi.SIZE == 1:
-                return torch.device('cuda')
+                device = torch.device('cuda')
             elif dlp_mpi.IS_MASTER:
                 print(f'{__file__}: CUDA is available, but MPI_SIZE > 1. Use CPU.')
-                return torch.device('cpu')
-        return torch.device('cpu')
+                device = torch.device('cpu')
+        return str(device)
     else:
         if isinstance(device, str) and device.isdigit():
             device = int(device)
@@ -45,7 +48,7 @@ def get_device(device=None):
         if dlp_mpi.IS_MASTER and dlp_mpi.SIZE > 1 and device.type == 'cuda':
             # Save memory by putting the idling root process on the CPU.
             device = torch.device('cpu')
-        return device
+        return str(device)
 
 
 class TemplateASR:
@@ -82,12 +85,12 @@ class _ESPnetASRBase(TemplateASR):
     speech2text: 'espnet2.bin.asr_inference.Speech2Text'
     model_tag: str
 
-    @cached_property.cached_property
-    def model_downloader(self):
+    @functools.cached_property
+    def model_downloader(self) -> "espnet_model_zoo.downloader.ModelDownloader":
         from espnet_model_zoo.downloader import ModelDownloader
         cachedir = os.environ.get('HF_HOME', None)
         print(f'Use {cachedir!r} as cachedir for model_tag={self.model_tag!r}')
-        return ModelDownloader(cachedir)
+        return ModelDownloader(cachedir)  # type: ignore
 
     def get_espnet_model_kwargs(self, model_tag):
         return self.model_downloader.download_and_unpack(model_tag)
@@ -214,6 +217,12 @@ class ESPnetASR(TemplateASR):
         self.ready = 0
 
         if model_tag == 'espnet/simpleoier_librispeech_asr_train_asr_conformer7_wavlm_large_raw_en_bpe5000_sp':
+            # pip install transformers espnet_model_zoo s3prl soxr
+            try:
+                import transformers, espnet_model_zoo, s3prl, soxr  # type: ignore
+            except ImportError:
+                raise ImportError('pip install transformers espnet_model_zoo s3prl soxr')
+
             bcast = False
             # The wavlm model is not pickleable.
             #     AttributeError: Can't pickle local object 'UpstreamBase._register_hook_handler.<locals>.generate_hook_handler.<locals>.hook_handler'
@@ -587,6 +596,9 @@ class NeMoASR(TemplateASR):
             verbose=False,
         )
         if mode == 'full':
+            if hasattr(h, 'text'):  # When did nemo change, that h is not a str? Probably: https://github.com/NVIDIA-NeMo/NeMo/pull/11818
+                h = h.text
+            assert isinstance(h, str), (type(h), h)
             result = h
         elif mode == 'segments':
             result = [
