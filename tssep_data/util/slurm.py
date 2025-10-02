@@ -33,7 +33,8 @@ class SlurmResources:
     if location == 'MERL':
         cpu_partition = 'cpu,cpu_extra'
         gpu_partition = 'gpu,gpu_24'
-        mpi_cmd = 'mpirun'
+        # mpi_cmd = 'mpirun'
+        mpi_cmd = 'srun'
     elif location == 'Noctua2':
         gputype = 'a100'
         cpu_partition = 'normal'
@@ -94,27 +95,27 @@ class SlurmResources:
 
         # Acceptable time formats include "minutes", "minutes:seconds", "hours:minutes:seconds", "days-hours", "days-hours:minutes" and "days-hours:minutes:seconds".
 
-        m = re.match('(\d+):(\d+):(\d+)', timestr)
+        m = re.match(r'(\d+):(\d+):(\d+)', timestr)
         if m:
             hours, minutes, seconds = m.groups()
             return int(hours) * 3600 + int(minutes) * 60 + int(seconds)
 
-        m = re.match('(\d+):(\d+)', timestr)
+        m = re.match(r'(\d+):(\d+)', timestr)
         if m:
             minutes, seconds = m.groups()
             return int(minutes) * 60 + int(seconds)
 
-        m = re.match('(\d+)-(\d+)', timestr)
+        m = re.match(r'(\d+)-(\d+)', timestr)
         if m:
             days, hours = m.groups()
             return int(days) * 24 * 3600 + int(hours) * 3600
 
-        m = re.match('(\d+)-(\d+):(\d+)', timestr)
+        m = re.match(r'(\d+)-(\d+):(\d+)', timestr)
         if m:
             days, hours, minutes = m.groups()
             return int(days) * 24 * 3600 + int(hours) * 3600 + int(minutes) * 60
 
-        m = re.match('(\d+)-(\d+):(\d+):(\d+)', timestr)
+        m = re.match(r'(\d+)-(\d+):(\d+):(\d+)', timestr)
         if m:
             days, hours, minutes, seconds = m.groups()
             return int(days) * 24 * 3600 + int(hours) * 3600 + int(minutes) * 60 + int(seconds)
@@ -157,7 +158,11 @@ class SlurmResources:
         # "days-hours": Not supported by pytimeparse.
         # "days-hours:minutes": Conflict with "minutes:seconds"
         # "days-hours:minutes:seconds"
-        assert self.time is not None, self.time
+        # assert self.time is not None, self.time
+
+        if self.time is None:
+            return None
+
         if isinstance(self.time, str):
             seconds = self._timestr_to_seconds(self.time)
         else:
@@ -187,7 +192,7 @@ class SlurmResources:
             return ['--mem', f'{self.mem}']
         else:
             # Slurm has no --mem-per-cpu, hence
-            m = re.fullmatch('(\d+)([tTgGmMkK]?[bB]?i?t?)', self.mem)
+            m = re.fullmatch(r'(\d+)([tTgGmMkK]?[bB]?i?t?)', self.mem)
             assert m, (m, self.mem)
             value, unit = m.groups()
 
